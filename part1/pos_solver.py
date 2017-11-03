@@ -1,70 +1,159 @@
-#!/usr/bin/python2
 ###################################
 # CS B551 Fall 2017, Assignment #3
-# D. Crandall
 #
-# There should be no need to modify this file, although you 
-# can if you really want. Edit pos_solver.py instead!
+# Your names and user ids:
 #
-# To get started, try running: 
+# (Based on skeleton code by D. Crandall)
 #
-#   python ./label.py bc.train bc.test.tiny
 #
+####
+# Put your report here!!
+####
 
-from pos_scorer import Score
-from pos_solver import *
-import sys
+import random
+import math
+from copy import deepcopy
 
-# Read in training or test data file
+order = ["adj", "adv", "adp", "conj", "det", "noun", "num", "pron", "prt", \
+         "verb", "x", "."]
+
+# We've set up a suggested code structure, but feel free to change it. Just
+# make sure your code still works with the label.py and pos_scorer.py code
+# that we've supplied.
 #
-def read_data(fname):
-    exemplars = []
-    file = open(fname, 'r');
-    for line in file:
-        data = tuple([w.lower() for w in line.split()])
-        exemplars += [ (data[0::2], data[1::2]), ]
-
-    return exemplars
-
-
-####################
-# Main program
-#
-
-#if len(sys.argv) < 3:
-#    print "Usage: "
-#    print "    ./label.py training_file test_file"
-#    sys.exit()
-
-#(train_file, test_file) = sys.argv[1:3]
-
-train_file = "C:\\users\\aduer\\desktop\\part1\\bc.train.txt"
-test_file = "C:\\users\\aduer\\desktop\\part1\\bc.test.txt"
-
-print "Learning model..."
-solver = Solver()
-train_data = read_data(train_file)
-solver.train(train_data)
-
-print "Loading test data..."
-test_data = read_data(test_file)
-
-print "Testing classifiers..."
-scorer = Score()
-Algorithms = ("Simplified", "HMM VE", "HMM MAP")
-Algorithm_labels = [ str(i+1) + ". " + Algorithms[i] for i in range(0, len(Algorithms) ) ]
-for (s, gt) in test_data:
-    outputs = {"0. Ground truth" : gt}
+class Solver:
+    def __init__(self):
+        #Class variables for the simplified POS model.
+        self.words = {}
+        self.totals = [0] * 12
         
-    # run all algorithms on the sentence
-    for (algo, label) in zip(Algorithms, Algorithm_labels):
-        outputs[label] = solver.solve( algo, s) 
+        #Class variables for the HMM-VE model.
+        self.initial_states = [0] * 12
+        self.transitions = [[0] * 12 for x in range(12)]
 
-    posteriors = { o: solver.posterior( s, outputs[o] ) for o in outputs }
-    
-    Score.print_results(s, outputs, posteriors)
+    # Calculate the log of the posterior probability of a given sentence
+    #  with a given part-of-speech labeling
+    def posterior(self, sentence, label):
+        return 0
+
+    # Do the training!
+    #
+    def train(self, data):
+        #Simplified Dictionary Creation
+        for example in data:           
+            sentence = example[0]
+            tags = example[1]
+            
+            index_of_tag = order.index(tags[0])
+            self.initial_states[index_of_tag] += 1
         
-    scorer.score(outputs)
-    scorer.print_scores()
+            last_tag = None
+            for word, tag in zip(sentence, tags):
+                if word not in self.words:
+                    self.words[word] = [0] * 12
+            
+                index_of_tag = order.index(tag)
+                self.words[word][index_of_tag] += 1
+                self.totals[index_of_tag] += 1
+                
+                if last_tag != None:
+                    index_of_last = order.index(last_tag)
+                    self.transitions[index_of_last][index_of_tag] += 1
+                    
+                last_tag = tag
+        
+        #Convert over to percentages.
+        for key in self.words:
+            values = self.words[key]
+            total = sum(values)
+            
+            values = [1.00 * x / total for x in values]
+            self.words[key] = values            
+        
+        total = sum(self.initial_states)
+        #Convert initial states to percentages
+        self.initial_states = [1.00 * x / total for x in self.initial_states]
+
+        #Convert transitions over to percentages...
+        for i, row in enumerate(self.transitions):
+            total = sum(row)
+            row = [1.00 * x / total for x in row]
+            self.transitions[i] = row
+
+        print(self.transitions)
+        pass
     
-    print "----"
+    # Functions for each algorithm.
+    #
+    def simplified(self, sentence):
+        guess = []
+        
+        for word in sentence:
+            if word in self.words:
+                values = self.words[word]
+                part = values.index(max(values))
+                
+                guess += [order[part]]
+            else:
+                #If we've never encountered the word before, pick the most
+                #common part-of-specch.
+                part = self.totals.index(max(self.totals))
+                guess += [order[part]]
+        return guess
+
+    def hmm_ve(self, sentence):
+        guess = []
+        
+        state = [0] * 12
+        for i, word in enumerate(sentence):            
+            if i == 0:
+                for y, pos in enumerate(state):
+                    pos = self.initial_states[y]
+
+                    #If we've never encountered this word before, then
+                    #let everything have equal probability of emission.
+                    if word in self.words:
+                        pos *= self.words[word][y]
+                    state[y] = pos
+            else:
+                new_state = [0] * 12
+                for n, new in enumerate(new_state):
+                    for p, pos in enumerate(state):
+                        trans_prob = self.transitions[p][n]
+                        prev_prob = state[p]
+                        
+                        new_state[n] += trans_prob * prev_prob
+                    
+                    #If we've never encountered this word before, then
+                    #let everything have equal probability of emission.
+                    if word in self.words:
+                        new_state[n] *= self.words[word][n]
+                state = new_state
+            
+            total = sum(state)
+            state = [1.00 * x / total for x in state]
+            
+            part = state.index(max(state))
+            guess += [order[part]]
+        
+        return guess
+
+    def hmm_viterbi(self, sentence):
+        return [ "noun" ] * len(sentence)
+
+
+    # This solve() method is called by label.py, so you should keep the interface the
+    #  same, but you can change the code itself. 
+    # It should return a list of part-of-speech labelings of the sentence, one
+    #  part of speech per word.
+    #
+    def solve(self, algo, sentence):
+        if algo == "Simplified":
+            return self.simplified(sentence)
+        elif algo == "HMM VE":
+            return self.hmm_ve(sentence)
+        elif algo == "HMM MAP":
+            return self.hmm_viterbi(sentence)
+        else:
+            print "Unknown algo!"
+

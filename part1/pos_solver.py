@@ -13,12 +13,18 @@
 import random
 import math
 
+order = ["adj", "adv", "adp", "conj", "det", "noun", "num", "pron", "prt", \
+         "verb", "x", "."]
+
 
 # We've set up a suggested code structure, but feel free to change it. Just
 # make sure your code still works with the label.py and pos_scorer.py code
 # that we've supplied.
 #
 class Solver:
+    def __init__(self):
+        self.simp_dict = {}
+        self.locations = {}
 
     # Calculate the log of the posterior probability of a given sentence
     #  with a given part-of-speech labeling
@@ -28,12 +34,32 @@ class Solver:
     # Do the training!
     #
     def train(self, data):
+        #Simplified Dictionary Creation
+        for example in data:           
+            words = example[0]
+            tags = example[1]
+        
+            for word, tag in zip(words, tags):
+                if word not in self.simp_dict:
+                    self.simp_dict[word] = [0] * 12
+            
+                self.simp_dict[word][order.index(tag)] += 1
         pass
 
     # Functions for each algorithm.
     #
     def simplified(self, sentence):
-        return [ "noun" ] * len(sentence)
+        guess = []
+        
+        for word in sentence:
+            if word in self.simp_dict:
+                values = self.simp_dict[word]
+                part = values.index(max(values))
+                
+                guess += [order[part]]
+            else:
+                guess += ["noun"]
+        return guess
 
     def hmm_ve(self, sentence):
         return [ "noun" ] * len(sentence)

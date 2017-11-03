@@ -1,85 +1,70 @@
+#!/usr/bin/python2
 ###################################
 # CS B551 Fall 2017, Assignment #3
+# D. Crandall
 #
-# Your names and user ids:
+# There should be no need to modify this file, although you 
+# can if you really want. Edit pos_solver.py instead!
 #
-# (Based on skeleton code by D. Crandall)
+# To get started, try running: 
 #
+#   python ./label.py bc.train bc.test.tiny
 #
-####
-# Put your report here!!
-####
 
-import random
-import math
+from pos_scorer import Score
+from pos_solver import *
+import sys
 
-order = ["adj", "adv", "adp", "conj", "det", "noun", "num", "pron", "prt", \
-         "verb", "x", "."]
-
-
-# We've set up a suggested code structure, but feel free to change it. Just
-# make sure your code still works with the label.py and pos_scorer.py code
-# that we've supplied.
+# Read in training or test data file
 #
-class Solver:
-    def __init__(self):
-        self.simp_dict = {}
-        self.locations = {}
+def read_data(fname):
+    exemplars = []
+    file = open(fname, 'r');
+    for line in file:
+        data = tuple([w.lower() for w in line.split()])
+        exemplars += [ (data[0::2], data[1::2]), ]
 
-    # Calculate the log of the posterior probability of a given sentence
-    #  with a given part-of-speech labeling
-    def posterior(self, sentence, label):
-        return 0
+    return exemplars
 
-    # Do the training!
-    #
-    def train(self, data):
-        #Simplified Dictionary Creation
-        for example in data:           
-            words = example[0]
-            tags = example[1]
+
+####################
+# Main program
+#
+
+#if len(sys.argv) < 3:
+#    print "Usage: "
+#    print "    ./label.py training_file test_file"
+#    sys.exit()
+
+#(train_file, test_file) = sys.argv[1:3]
+
+train_file = "C:\\users\\aduer\\desktop\\part1\\bc.train.txt"
+test_file = "C:\\users\\aduer\\desktop\\part1\\bc.test.txt"
+
+print "Learning model..."
+solver = Solver()
+train_data = read_data(train_file)
+solver.train(train_data)
+
+print "Loading test data..."
+test_data = read_data(test_file)
+
+print "Testing classifiers..."
+scorer = Score()
+Algorithms = ("Simplified", "HMM VE", "HMM MAP")
+Algorithm_labels = [ str(i+1) + ". " + Algorithms[i] for i in range(0, len(Algorithms) ) ]
+for (s, gt) in test_data:
+    outputs = {"0. Ground truth" : gt}
         
-            for word, tag in zip(words, tags):
-                if word not in self.simp_dict:
-                    self.simp_dict[word] = [0] * 12
-            
-                self.simp_dict[word][order.index(tag)] += 1
-        pass
+    # run all algorithms on the sentence
+    for (algo, label) in zip(Algorithms, Algorithm_labels):
+        outputs[label] = solver.solve( algo, s) 
 
-    # Functions for each algorithm.
-    #
-    def simplified(self, sentence):
-        guess = []
+    posteriors = { o: solver.posterior( s, outputs[o] ) for o in outputs }
+    
+    Score.print_results(s, outputs, posteriors)
         
-        for word in sentence:
-            if word in self.simp_dict:
-                values = self.simp_dict[word]
-                part = values.index(max(values))
-                
-                guess += [order[part]]
-            else:
-                guess += ["noun"]
-        return guess
-
-    def hmm_ve(self, sentence):
-        return [ "noun" ] * len(sentence)
-
-    def hmm_viterbi(self, sentence):
-        return [ "noun" ] * len(sentence)
-
-
-    # This solve() method is called by label.py, so you should keep the interface the
-    #  same, but you can change the code itself. 
-    # It should return a list of part-of-speech labelings of the sentence, one
-    #  part of speech per word.
-    #
-    def solve(self, algo, sentence):
-        if algo == "Simplified":
-            return self.simplified(sentence)
-        elif algo == "HMM VE":
-            return self.hmm_ve(sentence)
-        elif algo == "HMM MAP":
-            return self.hmm_viterbi(sentence)
-        else:
-            print "Unknown algo!"
-
+    scorer.score(outputs)
+    scorer.print_scores()
+    
+    print "----"

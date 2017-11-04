@@ -24,13 +24,13 @@ order = ["adj", "adv", "adp", "conj", "det", "noun", "num", "pron", "prt", \
 class Solver:
     def __init__(self):
         #Class variables for the simplified POS model.
-        self.words = {}
-        self.totals = [0] * 12
+        self.emissions = {}
+        self.totals = [0.00] * 12
         
         #Class variables for the HMM-VE model.
-        self.initial_states = [0] * 12
-        self.transitions = [[0] * 12 for x in range(12)]
-
+        self.initial_state = [0.00] * 12
+        self.transitions = [[0.00] * 12 for x in range(12)]
+        
     # Calculate the log of the posterior probability of a given sentence
     #  with a given part-of-speech labeling
     def posterior(self, sentence, label):
@@ -45,42 +45,39 @@ class Solver:
             tags = example[1]
             
             index_of_tag = order.index(tags[0])
-            self.initial_states[index_of_tag] += 1
+            self.initial_state[index_of_tag] += 1
         
             last_tag = None
             for word, tag in zip(sentence, tags):
-                if word not in self.words:
-                    self.words[word] = [0] * 12
+                if word not in self.emissions:
+                    self.emissions[word] = [0.00] * 12
             
                 index_of_tag = order.index(tag)
-                self.words[word][index_of_tag] += 1
+                self.emissions[word][index_of_tag] += 1
                 self.totals[index_of_tag] += 1
                 
                 if last_tag != None:
                     index_of_last = order.index(last_tag)
                     self.transitions[index_of_last][index_of_tag] += 1
-                    
                 last_tag = tag
         
-        #Convert over to percentages.
-        for key in self.words:
-            values = self.words[key]
+        #Convert initial states to percentages
+        total = sum(self.initial_state)
+        self.initial_state = [1.00 * x / total for x in self.initial_state]
+ 
+        #Convert emission probabilities over to percentages.
+        for key in self.emissions:
+            values = self.emissions[key]
             total = sum(values)
             
             values = [1.00 * x / total for x in values]
-            self.words[key] = values            
+            self.emissions[key] = values     
         
-        total = sum(self.initial_states)
-        #Convert initial states to percentages
-        self.initial_states = [1.00 * x / total for x in self.initial_states]
-
         #Convert transitions over to percentages...
         for i, row in enumerate(self.transitions):
             total = sum(row)
             row = [1.00 * x / total for x in row]
             self.transitions[i] = row
-
-        print(self.transitions)
         pass
     
     # Functions for each algorithm.
@@ -89,8 +86,8 @@ class Solver:
         guess = []
         
         for word in sentence:
-            if word in self.words:
-                values = self.words[word]
+            if word in self.emissions:
+                values = self.emissions[word]
                 part = values.index(max(values))
                 
                 guess += [order[part]]
@@ -104,19 +101,19 @@ class Solver:
     def hmm_ve(self, sentence):
         guess = []
         
-        state = [0] * 12
+        state = [0.00] * 12
         for i, word in enumerate(sentence):            
             if i == 0:
                 for y, pos in enumerate(state):
-                    pos = self.initial_states[y]
+                    pos = self.initial_state[y]
 
                     #If we've never encountered this word before, then
                     #let everything have equal probability of emission.
-                    if word in self.words:
-                        pos *= self.words[word][y]
+                    if word in self.emissions:
+                        pos *= self.emissions[word][y]
                     state[y] = pos
             else:
-                new_state = [0] * 12
+                new_state = [0.00] * 12
                 for n, new in enumerate(new_state):
                     for p, pos in enumerate(state):
                         trans_prob = self.transitions[p][n]
@@ -126,8 +123,8 @@ class Solver:
                     
                     #If we've never encountered this word before, then
                     #let everything have equal probability of emission.
-                    if word in self.words:
-                        new_state[n] *= self.words[word][n]
+                    if word in self.emissions:
+                        new_state[n] *= self.emissions[word][n]
                 state = new_state
             
             total = sum(state)

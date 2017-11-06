@@ -10,7 +10,26 @@
 # Put your report here!!
 ####
 
+from collections import Counter
 import math
+
+class Cell():
+    '''
+    Represents a cell in a Viterbi matrix. Has two members:
+        * prevPos - the cell in the previous state that is the most likely predecessor of this cell
+        * prob - the joint distribution probability of this cell
+    
+    Cells in the initial state should have a prevPos of None.
+    
+    When the last state has in the Viterbi matrix has been evaluated, the maximum
+    probability POS for that state can be determined. Then you only need to follow
+    the prevPos links until a cell with prevPos == None is reached, and you will
+    have your MAP path.
+    '''
+    
+    def __init__(self, prevPos, prob):
+        self.prevPos = prevPos
+        self.prob = prob
 
 order = ["adj", "adv", "adp", "conj", "det", "noun", "num", "pron", "prt", \
          "verb", "x", "."]
@@ -26,12 +45,11 @@ class Solver:
         self.simple_p_of_pos = [0.00] * 12  
 
         #Class variables for the HMM-VE model.
-        self.ve_emissions = []
-        self.ve_initial_state = [0.00] * 12
-        self.ve_transitions = [[0.00] * 12 for _ in range(12)]
-        for _ in range(12): self.ve_emissions.append({})
-        self.ve_default = [0.00] * 12
-        self.ve_lexicon = {}
+        self.hmm_emissions = [Counter() for _ in range(12)]
+        self.hmm_initial_state = [0.00] * 12
+        self.hmm_transitions = [[0.00] * 12 for _ in range(12)]
+        ## Clean-up #self.hmm_default = [0.00] * 12
+        self.hmm_lexicon = Counter()
 
 #        #Class variables for the HMM-Viterbi model.
 #        self.emissions_log = {}
@@ -54,8 +72,8 @@ class Solver:
             tags = example[1]
 
             #Variables for VE algorithm.
-            #Count the times a tag starts a sentence.
-            self.ve_initial_state[order.index(tags[0])] += 1
+            #Count the times a POS starts a sentence.
+            self.hmm_initial_state[order.index(tags[0])] += 1
             
             last_tag = None
             for word, tag in zip(sentence, tags):
@@ -67,19 +85,18 @@ class Solver:
                     self.simple_p_of_pos_given_word[word] = [0.00] * 12
                 self.simple_p_of_pos_given_word[word][index_of_tag] += 1
         
-                #Recording Transition Probabilities
+                # Transition Probabilities
                 if last_tag != None:
                     last_tag_index = order.index(last_tag)
                     current_tag_index = order.index(tag)
                     
-                    self.ve_transitions[last_tag_index][current_tag_index] += 1
+                    self.hmm_transitions[last_tag_index][current_tag_index] += 1
 
-                #Recording Emission Probabilities
-                if word not in self.ve_emissions[index_of_tag]:
-                    self.ve_emissions[index_of_tag][word] = 0
-                self.ve_emissions[index_of_tag][word] += 1
-                
-                if word not in self.ve_lexicon: self.ve_lexicon[word] = 1
+                # Emission Probabilities
+                self.hmm_emissions[index_of_tag][word] += 1
+
+                # Word probabilities                
+                self.hmm_lexicon[word] += 1
                 
                 last_tag = tag
                 
@@ -98,25 +115,24 @@ class Solver:
             self.simple_p_of_pos_given_word[word] = probs
 
         #Converting initial states to percentages
-        total = sum(self.ve_initial_state)
-        self.ve_initial_state = [x / total for x in self.ve_initial_state]
+        total = sum(self.hmm_initial_state)
+        self.hmm_initial_state = [x / total for x in self.hmm_initial_state]
 
         #Converting transitions over to percentages:
-        for p, pos in enumerate(self.ve_transitions):
+        for p, pos in enumerate(self.hmm_transitions):
             total = sum(pos)
             probs = [x / total for x in pos]
-            self.ve_transitions[p] = probs
+            self.hmm_transitions[p] = probs
 
         #Converting emission probabilities over to percentages:
-        for p, pos in enumerate(self.ve_emissions):
+        for p, pos in enumerate(self.hmm_emissions):
             total = sum(pos.values())
             
             for word in pos:
                 pos[word] = 1.00 * pos[word] / total
             
             #Record our probability of never having encountered a word.
-            self.ve_default[p] = 1.00 / total
-        pass
+            ## Clean-up #self.hmm_default[p] = 1.00 / total
     
     # Functions for each algorithm.
     #
@@ -142,34 +158,30 @@ class Solver:
         for w, word in enumerate(sentence):
             if w == 0:
                 for p, pos in enumerate(state):
-                    prob = self.ve_initial_state[p]
+                    prob = self.hmm_initial_state[p]
                     
-                    if word in self.ve_lexicon:
-                        if word in self.ve_emissions[p]:
-                            prob *= self.ve_emissions[p][word]
-                        else:
-                            prob *= 0
+                    if word in self.hmm_lexicon:
+                        # word is in lexicon, so it must be in emissions
+                        prob *= self.hmm_emissions[p][word] 
                     state[p] = prob
             else:
                 new_state = [0.00] * 12
                 for new_p, new_pos in enumerate(new_state):
                     for old_p, old_pos in enumerate(state):
-                        trans_prob = self.ve_transitions[old_p][new_p]                        
+                        trans_prob = self.hmm_transitions[old_p][new_p]                        
                         new_state[new_p] += trans_prob * old_pos
                     #If we've never encountered this word before, then
                     #let everything have equal probability of emission.
-                    if word in self.ve_lexicon:
-                        if word in self.ve_emissions[new_p]:
-                            new_state[new_p] *= self.ve_emissions[new_p][word]
-                        else:
-                            new_state[new_p] *= 0
+                    if word in self.hmm_lexicon:
+                        # word is in lexicon, so it must be in emissions
+                        new_state[new_p] *= self.hmm_emissions[new_p][word]
                 state = new_state
             
             total = sum(state)
             state = [1.00 * x / total for x in state]
 
-            part = state.index(max(state))
-            guess += [order[part]]   
+            part_index = state.index(max(state))
+            guess += [order[part_index]]   
         return guess
 
     def hmm_viterbi(self, sentence):

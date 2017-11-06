@@ -31,6 +31,7 @@ class Solver:
         self.ve_transitions = [[0.00] * 12 for _ in range(12)]
         for _ in range(12): self.ve_emissions.append({})
         self.ve_default = [0.00] * 12
+        self.ve_lexicon = {}
 
 #        #Class variables for the HMM-Viterbi model.
 #        self.emissions_log = {}
@@ -77,6 +78,8 @@ class Solver:
                 if word not in self.ve_emissions[index_of_tag]:
                     self.ve_emissions[index_of_tag][word] = 0
                 self.ve_emissions[index_of_tag][word] += 1
+                
+                if word not in self.ve_lexicon: self.ve_lexicon[word] = 1
                 
                 last_tag = tag
                 
@@ -141,11 +144,11 @@ class Solver:
                 for p, pos in enumerate(state):
                     prob = self.ve_initial_state[p]
                     
-                    if word in self.ve_emissions[p]:
-                        prob *= self.ve_emissions[p][word]
-                    else:
-                        prob *= self.ve_default[p]
-                    
+                    if word in self.ve_lexicon:
+                        if word in self.ve_emissions[p]:
+                            prob *= self.ve_emissions[p][word]
+                        else:
+                            prob *= 0
                     state[p] = prob
             else:
                 new_state = [0.00] * 12
@@ -155,10 +158,11 @@ class Solver:
                         new_state[new_p] += trans_prob * old_pos
                     #If we've never encountered this word before, then
                     #let everything have equal probability of emission.
-                    if word in self.ve_emissions[new_p]:
-                        new_state[new_p] *= self.ve_emissions[new_p][word]
-                    else:
-                        new_state[new_p] *= self.ve_default[new_p]
+                    if word in self.ve_lexicon:
+                        if word in self.ve_emissions[new_p]:
+                            new_state[new_p] *= self.ve_emissions[new_p][word]
+                        else:
+                            new_state[new_p] *= 0
                 state = new_state
             
             total = sum(state)

@@ -30,12 +30,12 @@ class Score:
 
 
     def print_scores(self):
-        print ""
-        print "==> So far scored %d sentences with %d words." % (self.sentence_count, self.word_count)
-        print "                   Words correct:     Sentences correct: "
+        print ("")
+        print ("==> So far scored %d sentences with %d words." % (self.sentence_count, self.word_count))
+        print ("                   Words correct:     Sentences correct: ")
         
         for i in sorted(self.word_scorecard):
-            print "%18s:     %7.2f%%             %7.2f%%" % (i, self.word_scorecard[i]*100 / float(self.word_count), self.sentence_scorecard[i]*100 / float(self.sentence_count))
+            print ("%18s:     %7.2f%%             %7.2f%%" % (i, self.word_scorecard[i]*100 / float(self.word_count), self.sentence_scorecard[i]*100 / float(self.sentence_count)))
 
     @staticmethod
     def print_helper(description, list, sentence):

@@ -32,21 +32,21 @@ def read_data(fname):
 #
 
 if len(sys.argv) < 3:
-    print "Usage: "
-    print "    ./label.py training_file test_file"
+    print ("Usage: ")
+    print ("    ./label.py training_file test_file")
     sys.exit()
 
 (train_file, test_file) = sys.argv[1:3]
 
-print "Learning model..."
+print ("Learning model...")
 solver = Solver()
 train_data = read_data(train_file)
 solver.train(train_data)
 
-print "Loading test data..."
+print ("Loading test data...")
 test_data = read_data(test_file)
 
-print "Testing classifiers..."
+print ("Testing classifiers...")
 scorer = Score()
 Algorithms = ("Simplified", "HMM VE", "HMM MAP")
 Algorithm_labels = [ str(i+1) + ". " + Algorithms[i] for i in range(0, len(Algorithms) ) ]
@@ -64,4 +64,4 @@ for (s, gt) in test_data:
     scorer.score(outputs)
     scorer.print_scores()
     
-    print "----"
+    print ("----")

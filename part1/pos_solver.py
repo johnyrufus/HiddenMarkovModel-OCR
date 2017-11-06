@@ -244,4 +244,4 @@ class Solver:
         elif algo == "HMM MAP":
             return self.hmm_viterbi(sentence)
         else:
-            print "Unknown algo!"
+            print ("Unknown algo!")

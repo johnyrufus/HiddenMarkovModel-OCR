@@ -31,24 +31,25 @@ class Cell():
         self.prevPos = prevPos
         self.prob = prob
 
-order = ["adj", "adv", "adp", "conj", "det", "noun", "num", "pron", "prt", \
-         "verb", "x", "."]
 
 # We've set up a suggested code structure, but feel free to change it. Just
 # make sure your code still works with the label.py and pos_scorer.py code
 # that we've supplied.
 #
 class Solver:
+    order = ["adj", "adv", "adp", "conj", "det", "noun", "num", "pron", "prt", \
+             "verb", "x", "."]
+
     def __init__(self):
         #Class variables for the simplified POS model.
         self.simple_p_of_pos_given_word = {}
         self.simple_p_of_pos = [0.00] * 12  
 
         #Class variables for the HMM-VE model.
-        self.hmm_emissions = [Counter() for _ in range(12)]
         self.hmm_initial_state = [0.00] * 12
+        self.hmm_end_state = [0.00] * 12
+        self.hmm_emissions = [Counter() for _ in range(12)]
         self.hmm_transitions = [[0.00] * 12 for _ in range(12)]
-        ## Clean-up #self.hmm_default = [0.00] * 12
         self.hmm_lexicon = Counter()
 
 #        #Class variables for the HMM-Viterbi model.
@@ -73,11 +74,12 @@ class Solver:
 
             #Variables for VE algorithm.
             #Count the times a POS starts a sentence.
-            self.hmm_initial_state[order.index(tags[0])] += 1
+            self.hmm_initial_state[self.order.index(tags[0])] += 1
+            self.hmm_end_state[self.order.index(tags[-1])] += 1
             
             last_tag = None
             for word, tag in zip(sentence, tags):
-                index_of_tag = order.index(tag)
+                index_of_tag = self.order.index(tag)
                 
                 #Variables for simplified algorithm.
                 self.simple_p_of_pos[index_of_tag] += 1
@@ -87,8 +89,8 @@ class Solver:
         
                 # Transition Probabilities
                 if last_tag != None:
-                    last_tag_index = order.index(last_tag)
-                    current_tag_index = order.index(tag)
+                    last_tag_index = self.order.index(last_tag)
+                    current_tag_index = self.order.index(tag)
                     
                     self.hmm_transitions[last_tag_index][current_tag_index] += 1
 
@@ -117,11 +119,14 @@ class Solver:
         #Converting initial states to percentages
         total = sum(self.hmm_initial_state)
         self.hmm_initial_state = [x / total for x in self.hmm_initial_state]
+        
+        total = sum(self.hmm_end_state)
+        self.hmm_end_state = [x / total for x in self.hmm_end_state]
 
         #Converting transitions over to percentages:
         for p, pos in enumerate(self.hmm_transitions):
             total = sum(pos)
-            probs = [x / total for x in pos]
+            probs = [(x+1) / (total+12) for x in pos]
             self.hmm_transitions[p] = probs
 
         #Converting emission probabilities over to percentages:
@@ -143,45 +148,66 @@ class Solver:
                 probs = self.simple_p_of_pos_given_word[word]
                 part = probs.index(max(probs))
                 
-                guess += [order[part]]
+                guess += [self.order[part]]
             else:
                 #If we've never encountered the word before, pick the most
                 #common part-of-specch.
                 part = self.simple_p_of_pos.index(max(self.simple_p_of_pos))
-                guess += [order[part]]
+                guess += [self.order[part]]
         return guess
-
+    
+    #Shell of the code: https://en.wikipedia.org/wiki/Forward%E2%80%93backward_algorithm
+    #Adjusted to suit our problem/formulation.
     def hmm_ve(self, sentence):
         guess = []
-        
-        state = [0.00] * 12
+        #Calculate foward pass...
+        forward = []
+        prev_state = [0.00] * 12
         for w, word in enumerate(sentence):
-            if w == 0:
-                for p, pos in enumerate(state):
-                    prob = self.hmm_initial_state[p]
-                    
-                    if word in self.hmm_lexicon:
-                        # word is in lexicon, so it must be in emissions
-                        prob *= self.hmm_emissions[p][word] 
-                    state[p] = prob
-            else:
-                new_state = [0.00] * 12
-                for new_p, new_pos in enumerate(new_state):
-                    for old_p, old_pos in enumerate(state):
-                        trans_prob = self.hmm_transitions[old_p][new_p]                        
-                        new_state[new_p] += trans_prob * old_pos
-                    #If we've never encountered this word before, then
-                    #let everything have equal probability of emission.
-                    if word in self.hmm_lexicon:
-                        # word is in lexicon, so it must be in emissions
-                        new_state[new_p] *= self.hmm_emissions[new_p][word]
-                state = new_state
+            current_state = [0.00] * 12
             
-            total = sum(state)
-            state = [1.00 * x / total for x in state]
+            for c, c_pos in enumerate(current_state):
+                #We're at the start of the sentence, so use initial_states...
+                if w == 0:
+                    prob = self.hmm_initial_state[c]
+                #Otherwise calculate the sum of our transitions...
+                else:
+                    prob = 0
+                    for p, p_pos in enumerate(prev_state):
+                        prob += prev_state[p] * self.hmm_transitions[p][c]
+                
+                current_state[c] = prob
+                #If our word is in our lexicon...
+                if word in self.hmm_lexicon:
+                    current_state[c] *= self.hmm_emissions[c][word]
+            forward.append(current_state)
+            prev_state = current_state
+        forward_prob = sum(current_state[p] * 1.00/12.00 for p in range(12))
+        
+        backward = []
+        prev_state = [0.00] * 12
 
-            part_index = state.index(max(state))
-            guess += [order[part_index]]   
+        for w, word in enumerate(reversed(sentence[1:] + ("",))):
+            current_state = [0.00] * 12
+            
+            for c, c_pos in enumerate(current_state):
+                if w == 0:
+                    current_state[c] = self.hmm_end_state[c]
+                else:
+                    prob = 0.00
+                    for p, p_pos in enumerate(prev_state):     
+                        temp = self.hmm_transitions[c][p] * prev_state[p]
+                        if word in self.hmm_lexicon:
+                            temp *= self.hmm_emissions[p][word]
+                        prob += temp
+                    current_state[c] = prob
+            backward.insert(0, current_state)
+            prev_state = current_state
+        
+        for w in range(len(sentence)):
+            probs = [forward[w][pos] * backward[w][pos] / forward_prob for pos in range(12)]
+            guess += [self.order[probs.index(max(probs))]]
+
         return guess
 
     def hmm_viterbi(self, sentence):

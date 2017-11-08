@@ -17,8 +17,9 @@ ch_height=25
 
 train_letters_ch = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789(),.-!?\"' "
 initial = defaultdict(int)
-trans = dict()
-prior = dict()
+trans_prob = dict()
+prior_prob = dict()
+emission_prob = dict()
 
 
 def load_letters(fname):
@@ -53,10 +54,10 @@ def calculate_probabilities(fname):
     train_set = set(train_letters_ch)
     for ch1 in train_letters_ch:
         initial[ch1] = 1.0
-        prior[ch1] = 1.0
-        trans[ch1] = dict()
+        prior_prob[ch1] = 1.0
+        trans_prob[ch1] = dict()
         for ch2 in train_letters_ch:
-            trans[ch1][ch2] = 1.0
+            trans_prob[ch1][ch2] = 1.0
 
     with open(fname) as f:
         for para in f.readlines():
@@ -65,22 +66,22 @@ def calculate_probabilities(fname):
                 line = line.lstrip()
                 for j, ch in enumerate(line):
                     if ch not in train_set: continue
-                    prior[ch] += 1
+                    prior_prob[ch] += 1
                     if j == 0:
                         initial[ch] += 1
                     elif j == len(line) - 1 and i != len(lines)-1:
-                        trans[ch]['.'] += 1
+                        trans_prob[ch]['.'] += 1
                     elif line[j-1] in train_set:
-                        trans[line[j-1]][ch] += 1
+                        trans_prob[line[j - 1]][ch] += 1
 
     initial_total = sum(initial.values())
-    prior_total = sum(prior.values())
+    prior_total = sum(prior_prob.values())
     for ch1 in train_letters_ch:
         initial[ch1] = initial[ch1]/initial_total
-        prior[ch1] = prior[ch1] / prior_total
-        trans_total = sum(trans[ch1].values())
+        prior_prob[ch1] = prior_prob[ch1] / prior_total
+        trans_total = sum(trans_prob[ch1].values())
         for ch2 in train_letters_ch:
-            trans[ch1][ch2] = trans[ch1][ch2]/trans_total
+            trans_prob[ch1][ch2] = trans_prob[ch1][ch2] / trans_total
 
 
 def calculate_error(train_letters, test_letters, naive_prediction):
@@ -92,6 +93,16 @@ def calculate_error(train_letters, test_letters, naive_prediction):
             total_valid += 1 if pixel == test_letters[i][j] else 0
     print(total_error)
     print(total_valid)
+    return total_error / (total_error + total_valid)
+
+
+def calculate_emission_prob(train_letters, test_letters, error_prob):
+    for ch in train_letters_ch:
+        emission_prob[ch] = [0.0] * len(test_letters)
+        for i in range(len(test_letters)):
+            emission_prob[ch][i] = 1
+            for j, pix in enumerate(test_letters[i]):
+                emission_prob[ch][i] *= (1 - error_prob) if pix == train_letters[ch][j] else error_prob
 
 
 def main():
@@ -109,11 +120,12 @@ def main():
         for i, l in enumerate(test_letters):
             test_letters[i] = list(chain.from_iterable(test_letters[i]))
 
+
         # Simplified
-        simplified_res = simplified_bayes(train_letters, test_letters, prior)
-        calculate_error(train_letters, test_letters, simplified_res)
+        simplified_res = simplified_bayes(train_letters, test_letters, prior_prob)
         print('Simple: {}'.format(simplified_res))
 
+        calculate_emission_prob(train_letters, test_letters, calculate_error(train_letters, test_letters, simplified_res))
         # Simplified Without priors
         simplified_res = simplified_bayes(train_letters, test_letters, None)
         calculate_error(train_letters, test_letters, simplified_res)

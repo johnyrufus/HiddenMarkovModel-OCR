@@ -12,7 +12,7 @@
 #
 
 from pos_scorer import Score
-from pos_solver import *
+from pos_solver import Algo, Solver
 import sys
 
 # Read in training or test data file
@@ -48,17 +48,17 @@ test_data = read_data(test_file)
 
 print ("Testing classifiers...")
 scorer = Score()
-Algorithms = ("Simplified", "HMM VE", "HMM MAP")
-Algorithm_labels = [ str(i+1) + ". " + Algorithms[i] for i in range(0, len(Algorithms) ) ]
+Algorithm_labels = [str(i+1) + ". " + key for i, key in enumerate(Algo.__members__)]
+gtLabel = "0. Ground truth"
 for (s, gt) in test_data:
-    outputs = {"0. Ground truth" : gt}
+    outputs = {gtLabel : gt}
+    posteriors = {gtLabel: 0.0}
         
     # run all algorithms on the sentence
-    for (algo, label) in zip(Algorithms, Algorithm_labels):
-        outputs[label] = solver.solve( algo, s) 
+    for (algoName, label) in zip(Algo.__members__, Algorithm_labels):
+        outputs[label] = solver.solve(Algo[algoName], s) 
+        posteriors[label] = solver.posterior(s, Algo[algoName])
 
-    posteriors = { o: solver.posterior( s, outputs[o] ) for o in outputs }
-    
     Score.print_results(s, outputs, posteriors)
         
     scorer.score(outputs)

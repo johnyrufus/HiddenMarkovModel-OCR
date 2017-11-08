@@ -10,11 +10,15 @@
 from PIL import Image, ImageDraw, ImageFont
 from naivebayes import NaiveBayes
 from collections import defaultdict
+from itertools import chain
 
-CHARACTER_WIDTH=14
-CHARACTER_HEIGHT=25
+ch_width=14
+ch_height=25
 
-train_letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789(),.-!?\"' "
+train_letters_ch = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789(),.-!?\"' "
+initial = defaultdict(int)
+trans = dict()
+prior = dict()
 
 
 def load_letters(fname):
@@ -22,18 +26,18 @@ def load_letters(fname):
     px = im.load()
     (x_size, y_size) = im.size
     result = []
-    for x_beg in range(0, int(x_size / CHARACTER_WIDTH) * CHARACTER_WIDTH, CHARACTER_WIDTH):
-        result += [ [ "".join([ '*' if px[x, y] < 1 else ' ' for x in range(x_beg, x_beg+CHARACTER_WIDTH) ]) for y in range(0, CHARACTER_HEIGHT) ], ]
+    for x_beg in range(0, int(x_size / ch_width) * ch_width, ch_width):
+        result += [ [ "".join([ '*' if px[x, y] < 1 else ' ' for x in range(x_beg, x_beg+ch_width) ]) for y in range(0, ch_height) ], ]
     return result
 
 
 def load_training_letters(fname):
     letter_images = load_letters(fname)
-    return { train_letters[i]: letter_images[i] for i in range(0, len(train_letters) ) }
+    return { train_letters_ch[i]: letter_images[i] for i in range(0, len(train_letters_ch) ) }
 
 
-def simplified_bayes(train_letters, test_letters):
-    nb = NaiveBayes(train_letters)
+def simplified_bayes(train_letters, test_letters, prior):
+    nb = NaiveBayes(train_letters, prior)
     return ''.join([nb.predict(letter) for letter in test_letters])
 
 
@@ -45,17 +49,15 @@ def hmm_map(train_letters, test_letters):
     pass
 
 
-def calculate_initial_transition_probabilities(fname):
-    train_set = set(train_letters)
-    initial = defaultdict(int)
-    trans = {}
-    for ch1 in train_letters:
+def calculate_probabilities(fname):
+    train_set = set(train_letters_ch)
+    for ch1 in train_letters_ch:
         initial[ch1] = 1.0
-        trans[ch1] = {}
-        for ch2 in train_letters:
+        prior[ch1] = 1.0
+        trans[ch1] = dict()
+        for ch2 in train_letters_ch:
             trans[ch1][ch2] = 1.0
-    print(trans)
-    print(initial)
+
     with open(fname) as f:
         for para in f.readlines():
             lines = para.split('. ')
@@ -63,54 +65,65 @@ def calculate_initial_transition_probabilities(fname):
                 line = line.lstrip()
                 for j, ch in enumerate(line):
                     if ch not in train_set: continue
+                    prior[ch] += 1
                     if j == 0:
                         initial[ch] += 1
                     elif j == len(line) - 1 and i != len(lines)-1:
                         trans[ch]['.'] += 1
                     elif line[j-1] in train_set:
                         trans[line[j-1]][ch] += 1
-    print(trans)
-    print(initial)
+
     initial_total = sum(initial.values())
-    for ch1 in train_letters:
+    prior_total = sum(prior.values())
+    for ch1 in train_letters_ch:
         initial[ch1] = initial[ch1]/initial_total
+        prior[ch1] = prior[ch1] / prior_total
         trans_total = sum(trans[ch1].values())
-        for ch2 in train_letters:
+        for ch2 in train_letters_ch:
             trans[ch1][ch2] = trans[ch1][ch2]/trans_total
-    print(trans)
-    print(initial)
-
-    print(sum(initial.values()))
-    for ch1 in train_letters:
-        print(sum(trans[ch1].values()))
 
 
-
-
-
-
-
-
+def calculate_error(train_letters, test_letters, naive_prediction):
+    total_error = 1
+    total_valid = 1
+    for i, ch in enumerate(naive_prediction):
+        for j, pixel in enumerate(train_letters[ch]):
+            total_error += 1 if pixel != test_letters[i][j] else 0
+            total_valid += 1 if pixel == test_letters[i][j] else 0
+    print(total_error)
+    print(total_valid)
 
 
 def main():
     train_img_fname = 'courier-train.png'
-    test_img_fname = 'test-0-0.png'
     train_txt_fname = 'DemocracyAndEducation.txt'
 
     train_letters = load_training_letters(train_img_fname)
-    test_letters = load_letters(test_img_fname)
+    for ch in train_letters_ch:
+        train_letters[ch] = list(chain.from_iterable(train_letters[ch]))
+    calculate_probabilities(train_txt_fname)
 
-    calculate_initial_transition_probabilities(train_txt_fname)
+    for i in range(20):
+        test_img_fname = 'test-{}-0.png'.format(i)
+        test_letters = load_letters(test_img_fname)
+        for i, l in enumerate(test_letters):
+            test_letters[i] = list(chain.from_iterable(test_letters[i]))
 
-    # Simplified
-    print('Simple: {}'.format(simplified_bayes(train_letters, test_letters)))
+        # Simplified
+        simplified_res = simplified_bayes(train_letters, test_letters, prior)
+        calculate_error(train_letters, test_letters, simplified_res)
+        print('Simple: {}'.format(simplified_res))
 
-    # HMM VE
-    print('HMM VE: {}'.format(hmm_ve(train_letters, test_letters)))
+        # Simplified Without priors
+        simplified_res = simplified_bayes(train_letters, test_letters, None)
+        calculate_error(train_letters, test_letters, simplified_res)
+        print('Simple: {}'.format(simplified_res))
 
-    # HMM MAP
-    print('HMM MAP: {}'.format(hmm_map(train_letters, test_letters)))
+        # HMM VE
+        #print('HMM VE: {}'.format(hmm_ve(train_letters, test_letters)))
+
+        # HMM MAP
+        #print('HMM MAP: {}'.format(hmm_map(train_letters, test_letters)))
 
 
 if __name__ == '__main__':

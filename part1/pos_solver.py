@@ -61,13 +61,11 @@ class Solver:
         self.posteriors = {Algo.Simplified: 0.0, Algo.HMM_VE: 0.0, Algo.HMM_MAP: 0.0}
 
         #Class variables for the HMM-Viterbi model.
-#        self.pos_given_word_log = {}
-#        self.pos_log = [0.00] * 12
-#        self.emission_logs = {}
-#        self.initial_state_logs = [0.00] * 12
-#        self.transition_logs = [[0.00] * 12 for x in range(12)]
-#        self.lexicon_logs = {}
-        
+        self.initial_state_probs_log = [0.00] * 12
+        self.end_state_probs_log = [0.00] * 12
+        self.emission_probs_log = [{} for _ in range(12)]
+        self.transition_probs_log = [[0.00] * 12 for _ in range(12)]
+            
     # Calculate the log of the posterior probability of a given sentence
     #  with a given part-of-speech labeling
     def posterior(self, sentence, algo):
@@ -76,8 +74,6 @@ class Solver:
     # Do the training!
     #
     def train(self, data):
-        #Count how many times a tag starts a sentence
-        
         for example in data:
             sentence = example[0]
             tags = example[1]
@@ -86,6 +82,9 @@ class Solver:
             #Count the times a POS starts a sentence.
             self.initial_state_probs[self.order.index(tags[0])] += 1
             self.end_state_probs[self.order.index(tags[-1])] += 1
+            
+            self.initial_state_probs_log[self.order.index(tags[0])] += 1
+            self.end_state_probs_log[self.order.index(tags[-1])] += 1            
             
             last_tag = None
             for word, tag in zip(sentence, tags):
@@ -106,6 +105,10 @@ class Solver:
 
                 # Emission Probabilities
                 self.emission_probs[index_of_tag][word] += 1
+                
+                if word not in self.emission_probs_log[index_of_tag]:
+                    self.emission_probs_log[index_of_tag][word] = 0
+                self.emission_probs_log[index_of_tag][word] += 1
 
                 # Word probabilities                
                 self.lexicon[word] += 1
@@ -130,14 +133,21 @@ class Solver:
         total = sum(self.initial_state_probs)
         self.initial_state_probs = [x / total for x in self.initial_state_probs]
         
+        total = sum(self.initial_state_probs_log)
+        self.initial_state_probs_log = [log(x / total, 2) for x in self.initial_state_probs_log]
+        
         total = sum(self.end_state_probs)
         self.end_state_probs = [x / total for x in self.end_state_probs]
 
         #Converting transitions over to percentages:
         for p, pos in enumerate(self.transition_probs):
             total = sum(pos)
-            probs = [(x+1) / (total+12) for x in pos]
+            probs = [(x+1.00) / (total+12.00) for x in pos]
             self.transition_probs[p] = probs
+            
+        for p, pos in enumerate(self.transition_probs_log):
+            total = sum(pos)
+            probs = [log((x + 1.00) / (total + 12.00), 2) for x in pos]
 
         #Converting emission probabilities over to percentages:
         for p, pos in enumerate(self.emission_probs):
@@ -145,9 +155,12 @@ class Solver:
             
             for word in pos:
                 pos[word] = 1.00 * pos[word] / total
+        
+        for p, pos in enumerate(self.emission_probs_log):
+            total = sum(pos.values())
             
-            #Record our probability of never having encountered a word.
-            ## Clean-up #self.hmm_default[p] = 1.00 / total
+            for word in pos:
+                pos[word] = log(1.00 * pos[word] / total, 2)
     
     # Functions for each algorithm.
     #
@@ -196,7 +209,7 @@ class Solver:
                     current_state[c] *= self.emission_probs[c][word]
             forward.append(current_state)
             prev_state = current_state
-        forward_prob = sum(current_state[p] * 1.00/12.00 for p in range(12))
+        forward_prob = sum(current_state[p] * self.end_state_probs[p] for p in range(12))
         
         backward = []
         prev_state = [0.00] * 12
@@ -228,64 +241,75 @@ class Solver:
         return guess
 
     def hmm_viterbi(self, sentence):
-        guess = ["noun"] * len(sentence)
+        guess = []
         
         state = [[0.00] * 12 for x in range(len(sentence))]
+        backtrack = []
+
         vit_posterior = 1.0
         
         for w, word in enumerate(sentence):
-            True # we'll add real code later
-#            if word in self.emissions_log:
-#                em = self.emissions_log[word]
-#            else:
-#                em = self.default_log
-#            
-#            if w == 0:
-#                cur_state = state[w]
-#                
-#                for c, c_pos in enumerate(cur_state):
-#                    value = self.initial_state_log[c] + em[c]
-#                    cur_state[c] = value
-#                state[w] = cur_state
-#            else:
-#                prev_state = state[w-1]
-#                cur_state = state[w]
-#                
-#                for c, c_pos in enumerate(cur_state):
-#                    prev_val = -float('inf')
-#                    for p, p_pos in enumerate(prev_state):
-#                        prev_val = max(prev_val, p_pos + self.transitions_log[p][c])
-#                    
-#                    value = em[c] + prev_val
-#                    cur_state[c] = value
-#                state[w] = cur_state
-#
-#                back = [[0.00] * 12 for x in range(12)]
-#                for c, c_pos in enumerate(cur_state):
-#                    for p, p_pos in enumerate(prev_state):
-#                        back[p][c] = p_pos + self.transitions_log[p][c] + em[c]
-#                backtrack.append(back)
-#
-#        last = state[len(sentence)-1]
-#        last_index = last.index(max(last))
-#        tagging = [last_index]
-#
-#        for trans in reversed(backtrack):
-#            high_prob = -float('inf')
-#            index = -1
-#            
-#            for p, pos in enumerate(trans):
-#                if pos[last_index] > high_prob:
-#                    high_prob = pos[last_index]
-#                    index = p
-#            
-#            last_index = index
-#            tagging = [last_index] + tagging
-#
-#        for tag in tagging:
-#            guess += [order[tag]]
+            if w == 0:
+                cur_state = state[w]
+                
+                for c, c_pos in enumerate(cur_state):
+                    value = self.initial_state_probs_log[c]
+                    
+                    if word in self.emission_probs_log[c]:
+                        value += self.emission_probs_log[c][word]
+                    else:
+                        value += log(1.00 / (len(self.lexicon)*10000), 2)
+                    cur_state[c] = value
+                state[w] = cur_state
+            else:
+                prev_state = state[w-1]
+                cur_state = state[w]
+                
+                for c, c_pos in enumerate(cur_state):
+                    value = -float('inf')
+                    for p, p_pos in enumerate(prev_state):
+                        value = max(value, p_pos + self.transition_probs_log[p][c])
 
-        self.posteriors[Algo.HMM_MAP] = log(vit_posterior)
+                    if word in self.emission_probs_log[c]:
+                        value += self.emission_probs_log[c][word]
+                    else:
+                        value += log(1.00 / (len(self.lexicon)*100), 2)
+                    cur_state[c] = value
+                state[w] = cur_state
+
+                back = [[0.00] * 12 for x in range(12)]
+                for c, c_pos in enumerate(cur_state):
+                    for p, p_pos in enumerate(prev_state):
+                        back[p][c] = p_pos + self.transition_probs_log[p][c]
+                        
+                        if word in self.emission_probs_log[c]:
+                            back[p][c] += self.emission_probs_log[c][word]
+                        else:
+                            back[p][c] += log(1.00 / (len(self.lexicon)*10000), 2)
+                            
+                backtrack.append(back)
+                
+        last = state[len(sentence)-1]
+        last_index = last.index(max(last))
+        tagging = [last_index]
+
+        vit_posterior = max(last)
+
+        for trans in reversed(backtrack):
+            high_prob = -float('inf')
+            index = -1
+            
+            for p, pos in enumerate(trans):
+                if pos[last_index] > high_prob:
+                    high_prob = pos[last_index]
+                    index = p
+            last_index = index
+            tagging = [last_index] + tagging
+
+        for tag in tagging:
+            guess += [self.order[tag]]
+
+        self.posteriors[Algo.HMM_MAP] = vit_posterior
         return guess
 
     # This solve() method is called by label.py, so you should keep the interface the

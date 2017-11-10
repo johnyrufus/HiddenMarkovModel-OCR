@@ -89,11 +89,13 @@ def calculate_error(train_letters, test_letters, naive_prediction):
     total_valid = 1
     for i, ch in enumerate(naive_prediction):
         for j, pixel in enumerate(train_letters[ch]):
-            total_error += 1 if pixel != test_letters[i][j] else 0
-            total_valid += 1 if pixel == test_letters[i][j] else 0
-    print(total_error)
-    print(total_valid)
-    return total_error / (total_error + total_valid)
+            if test_letters[i][j] == '*':
+                total_error += (1 if pixel != test_letters[i][j] else 0)
+                total_valid += (1 if pixel == test_letters[i][j] else 0)
+    error_weight = 0.5 # Otherwise the Observation can get completely ignored, if naive bayes prediction is bad
+    error_prob = error_weight * total_error / (total_error + total_valid)
+    print(error_prob)
+    return error_prob
 
 
 def calculate_emission_prob(train_letters, test_letters, error_prob):

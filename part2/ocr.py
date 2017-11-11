@@ -2,7 +2,7 @@
 #
 # ./ocr.py : Perform optical character recognition, usage:
 #     ./ocr.py train-image-file.png train-text.txt test-image-file.png
-# 
+#
 # Authors: (insert names here)
 # (based on skeleton code by D. Crandall, Oct 2017)
 #
@@ -16,10 +16,11 @@ ch_width=14
 ch_height=25
 
 train_letters_ch = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789(),.-!?\"' "
-initial = defaultdict(int)
+start_prob = defaultdict(int)
 trans_prob = dict()
 prior_prob = dict()
 emm_prob = dict()
+end_prob = defaultdict(int)
 
 
 def load_letters(fname):
@@ -42,18 +43,63 @@ def simplified_bayes(train_letters, test_letters, prior):
     return ''.join([nb.predict(letter) for letter in test_letters])
 
 
-def hmm_ve(train_letters, test_letters):
-    pass
+def hmm_ve(test_letters):
+    return forward_backward(test_letters, train_letters_ch)
 
 
-def hmm_map(train_letters, test_letters):
+def forward_backward(observations, states):
+    fwd = []
+    f_prev = {}
+    for i, observation_i in enumerate(observations):
+        f_curr = {}
+        for st in states:
+            if i == 0:
+                prev_f_sum = start_prob[st]
+            else:
+                prev_f_sum = sum(f_prev[k] * trans_prob[k][st] for k in states)
+
+            f_curr[st] = emm_prob[st][i] * prev_f_sum
+
+        fwd.append(f_curr)
+        f_prev = f_curr
+        #print(f_prev)
+
+    p_fwd = sum(f_curr[k] * 1/len(train_letters_ch) for k in states)
+
+    bkw = []
+    b_prev = {}
+    
+    for i in reversed(list(range(len(observations)))[1:] + [0]):
+        b_curr = {}
+        for st in states:
+            if i == 0:
+                b_curr[st] = end_prob[st]
+            else:
+                b_curr[st] = sum(trans_prob[st][l] * emm_prob[l][i] * b_prev[l] for l in states)
+
+        bkw.insert(0, b_curr)
+        b_prev = b_curr
+
+    p_bkw = sum(start_prob[l] * emm_prob[l][0] * b_curr[l] for l in states)
+
+    posterior = []
+    for i in range(len(observations)):
+        posterior.append({st: fwd[i][st] * bkw[i][st] / p_fwd for st in states})
+
+    #assert p_fwd == p_bkw
+    print(p_fwd, p_bkw)
+    #print(fwd, bkw, posterior)
+    return fwd, bkw, posterior
+
+
+def hmm_map(test_letters):
     pass
 
 
 def calculate_probabilities(fname):
     train_set = set(train_letters_ch)
     for ch1 in train_letters_ch:
-        initial[ch1] = 1.0
+        start_prob[ch1] = 1.0
         prior_prob[ch1] = 1.0
         trans_prob[ch1] = dict()
         for ch2 in train_letters_ch:
@@ -68,20 +114,26 @@ def calculate_probabilities(fname):
                     if ch not in train_set: continue
                     prior_prob[ch] += 1
                     if j == 0:
-                        initial[ch] += 1
-                    elif j == len(line) - 1 and i != len(lines)-1:
-                        trans_prob[ch]['.'] += 1
+                        start_prob[ch] += 1
+                    elif j == len(line) - 1:
+                        if i != len(lines)-1:
+                            trans_prob[ch]['.'] += 1
+                            end_prob['.'] += 1
+                        end_prob[ch] += 1
                     elif line[j-1] in train_set:
                         trans_prob[line[j - 1]][ch] += 1
 
-    initial_total = sum(initial.values())
+    initial_total = sum(start_prob.values())
     prior_total = sum(prior_prob.values())
+    end_total = sum(end_prob.values())
     for ch1 in train_letters_ch:
-        initial[ch1] = initial[ch1]/initial_total
+        start_prob[ch1] = start_prob[ch1] / initial_total
         prior_prob[ch1] = prior_prob[ch1] / prior_total
+        end_prob[ch1] = end_prob[ch1] / end_total
         trans_total = sum(trans_prob[ch1].values())
         for ch2 in train_letters_ch:
             trans_prob[ch1][ch2] = trans_prob[ch1][ch2] / trans_total
+    end_prob['.'] = 0.1
 
 
 def calculate_error(train_letters, test_letters, naive_prediction):
@@ -140,6 +192,7 @@ def main():
         for i, l in enumerate(test_letters):
             test_letters[i] = list(chain.from_iterable(test_letters[i]))
 
+        #test_letters = test_letters[0:2]
 
         # Simplified
         simplified_res = simplified_bayes(train_letters, test_letters, prior_prob)
@@ -147,22 +200,19 @@ def main():
 
         calculate_emission_prob(train_letters, test_letters, calculate_error(train_letters, test_letters, simplified_res))
         # Simplified Without priors
-        simplified_res = simplified_bayes(train_letters, test_letters, None)
-        calculate_error(train_letters, test_letters, simplified_res)
-        print('Simple: {}'.format(simplified_res))
+        #simplified_res = simplified_bayes(train_letters, test_letters, None)
+        #calculate_error(train_letters, test_letters, simplified_res)
+        #print('Simple: {}'.format(simplified_res))
 
         # HMM VE
-        #print('HMM VE: {}'.format(hmm_ve(train_letters, test_letters)))
+        fwd, bkw, posterior = hmm_ve(test_letters)
+        print('HMM VE: {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in fwd])))
+        #print('HMM VE: {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in bkw])))
+        print('HMM VE: {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in posterior])))
 
         # HMM MAP
-        #print('HMM MAP: {}'.format(hmm_map(train_letters, test_letters)))
+        #print('HMM MAP: {}'.format(hmm_map(test_letters)))
 
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-

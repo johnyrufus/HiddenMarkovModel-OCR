@@ -26,7 +26,8 @@ class NaiveBayes:
         for label in posterior.keys():
             res = math.log(self.prior[label])
             for i, val in enumerate(test_data):
-                res += math.log(2 / 3) if self.train_data[label][i] == test_data[i] else math.log(1 / 3)
+                if test_data[i] == '*':
+                    res += math.log(2 / 3) if self.train_data[label][i] == test_data[i] else math.log(1 / 3)
             posterior[label] = res
         return max(posterior, key=posterior.get)
 

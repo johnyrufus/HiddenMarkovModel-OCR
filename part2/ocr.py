@@ -125,6 +125,7 @@ def viterbi(states, num_obs):
         st = dp[prev][obs]['prev']
         res = [st] + res
         prev = st
+    #print(dp)
     return res
 
 
@@ -176,7 +177,7 @@ def calculate_error(train_letters, test_letters, naive_prediction):
             if test_letters[i][j] == '*':
                 total_error += (1 if pixel != test_letters[i][j] else 0)
                 total_valid += (1 if pixel == test_letters[i][j] else 0)
-    error_weight = 0.5 # Otherwise the Observation can get completely ignored, if naive bayes prediction is bad
+    error_weight = 0.2 # Otherwise the Observation can get completely ignored, if naive bayes prediction is bad
     error_prob = error_weight * total_error / (total_error + total_valid)
     #print(error_prob)
     return error_prob

@@ -64,7 +64,7 @@ def forward_backward(observations, states):
         f_prev = f_curr
         #print(f_prev)
 
-    p_fwd = sum(f_curr[k] * 1/len(train_letters_ch) for k in states)
+    p_fwd = sum(f_curr[k] * end_prob[k] for k in states)
 
     bkw = []
     b_prev = {}
@@ -81,13 +81,15 @@ def forward_backward(observations, states):
         b_prev = b_curr
 
     p_bkw = sum(start_prob[l] * emm_prob[l][0] * b_curr[l] for l in states)
-
+    print(p_fwd, p_bkw)
+    print(fwd)
     posterior = []
     for i in range(len(observations)):
-        posterior.append({st: fwd[i][st] * bkw[i][st] / p_fwd for st in states})
+        if p_fwd == 0:
+            return fwd, bkw, fwd
+        else:
+            posterior.append({st: fwd[i][st] * bkw[i][st] / p_fwd for st in states})
 
-    #assert p_fwd == p_bkw
-    print(p_fwd, p_bkw)
     #print(fwd, bkw, posterior)
     return fwd, bkw, posterior
 
@@ -144,9 +146,9 @@ def calculate_error(train_letters, test_letters, naive_prediction):
             if test_letters[i][j] == '*':
                 total_error += (1 if pixel != test_letters[i][j] else 0)
                 total_valid += (1 if pixel == test_letters[i][j] else 0)
-    error_weight = 0.5 # Otherwise the Observation can get completely ignored, if naive bayes prediction is bad
+    error_weight = 0.15 # Otherwise the Observation can get completely ignored, if naive bayes prediction is bad
     error_prob = error_weight * total_error / (total_error + total_valid)
-    print(error_prob)
+    #print(error_prob)
     return error_prob
 
 
@@ -156,17 +158,6 @@ def calculate_emission_prob(train_letters, test_letters, error_prob):
         for i in range(len(test_letters)):
             for j, pix in enumerate(test_letters[i]):
                 emm_prob[ch][i] *= (1 - error_prob) if pix == train_letters[ch][j] else error_prob
-                #emm_prob[ch][i] *= 2.0/3 if pix == train_letters[ch][j] else 1.0/3
-    #print(emm_prob)
-    '''for ch in train_letters_ch:
-        print(emm_prob[ch])
-        total = sum(emm_prob[ch])
-        print(total)
-        checktotal = 0
-        for i in range(len(test_letters)):
-            emm_prob[ch][i] = emm_prob[ch][i]/total
-            checktotal += emm_prob[ch][i]
-    print(emm_prob)'''
 
     for i in range(len(test_letters)):
         total = 0
@@ -197,17 +188,10 @@ def main():
         # Simplified
         simplified_res = simplified_bayes(train_letters, test_letters, prior_prob)
         print('Simple: {}'.format(simplified_res))
-
         calculate_emission_prob(train_letters, test_letters, calculate_error(train_letters, test_letters, simplified_res))
-        # Simplified Without priors
-        #simplified_res = simplified_bayes(train_letters, test_letters, None)
-        #calculate_error(train_letters, test_letters, simplified_res)
-        #print('Simple: {}'.format(simplified_res))
 
         # HMM VE
         fwd, bkw, posterior = hmm_ve(test_letters)
-        print('HMM VE: {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in fwd])))
-        #print('HMM VE: {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in bkw])))
         print('HMM VE: {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in posterior])))
 
         # HMM MAP

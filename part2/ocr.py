@@ -81,8 +81,6 @@ def forward_backward(observations, states):
         b_prev = b_curr
 
     p_bkw = sum(start_prob[l] * emm_prob[l][0] * b_curr[l] for l in states)
-    print(p_fwd, p_bkw)
-    print(fwd)
     posterior = []
     for i in range(len(observations)):
         if p_fwd == 0:
@@ -95,7 +93,39 @@ def forward_backward(observations, states):
 
 
 def hmm_map(test_letters):
-    pass
+    return viterbi(train_letters_ch, len(test_letters))
+
+
+def viterbi(states, num_obs):
+    dp = {st: {obs:{} for obs in range(num_obs)} for st in states}
+
+    for st in states:
+        dp[st][0]['value'] = start_prob[st] * emm_prob[st][0]
+        dp[st][0]['prev'] = None
+
+    for obs in range(1, num_obs):
+        for st in states:
+            max_prev = max(dp[prev][obs-1]['value'] * trans_prob[prev][st] for prev in states)
+            for prev in states:
+                if dp[prev][obs-1]['value'] * trans_prob[prev][st] == max_prev:
+                    dp[st][obs]['value'] = max_prev * emm_prob[st][obs]
+                    dp[st][obs]['prev'] = prev
+                    break
+
+    last_st = None
+    maxv = - float('inf')
+    for st in states:
+        if dp[st][num_obs-1]['value'] > maxv:
+            maxv = dp[st][num_obs-1]['value']
+            last_st = st
+    res = [last_st]
+
+    prev = last_st
+    for obs in range(num_obs-1, 0, -1):
+        st = dp[prev][obs]['prev']
+        res = [st] + res
+        prev = st
+    return res
 
 
 def calculate_probabilities(fname):
@@ -146,7 +176,7 @@ def calculate_error(train_letters, test_letters, naive_prediction):
             if test_letters[i][j] == '*':
                 total_error += (1 if pixel != test_letters[i][j] else 0)
                 total_valid += (1 if pixel == test_letters[i][j] else 0)
-    error_weight = 0.15 # Otherwise the Observation can get completely ignored, if naive bayes prediction is bad
+    error_weight = 0.5 # Otherwise the Observation can get completely ignored, if naive bayes prediction is bad
     error_prob = error_weight * total_error / (total_error + total_valid)
     #print(error_prob)
     return error_prob
@@ -187,15 +217,15 @@ def main():
 
         # Simplified
         simplified_res = simplified_bayes(train_letters, test_letters, prior_prob)
-        print('Simple: {}'.format(simplified_res))
+        print('Simple : {}'.format(simplified_res))
         calculate_emission_prob(train_letters, test_letters, calculate_error(train_letters, test_letters, simplified_res))
 
         # HMM VE
         fwd, bkw, posterior = hmm_ve(test_letters)
-        print('HMM VE: {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in posterior])))
+        print('HMM VE : {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in posterior])))
 
         # HMM MAP
-        #print('HMM MAP: {}'.format(hmm_map(test_letters)))
+        print('HMM MAP: {}'.format(''.join(hmm_map(test_letters))))
 
 
 if __name__ == '__main__':

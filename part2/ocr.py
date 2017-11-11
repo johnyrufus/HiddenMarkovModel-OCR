@@ -19,7 +19,7 @@ train_letters_ch = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567
 initial = defaultdict(int)
 trans_prob = dict()
 prior_prob = dict()
-emission_prob = dict()
+emm_prob = dict()
 
 
 def load_letters(fname):
@@ -100,11 +100,29 @@ def calculate_error(train_letters, test_letters, naive_prediction):
 
 def calculate_emission_prob(train_letters, test_letters, error_prob):
     for ch in train_letters_ch:
-        emission_prob[ch] = [0.0] * len(test_letters)
+        emm_prob[ch] = [1.0] * len(test_letters)
         for i in range(len(test_letters)):
-            emission_prob[ch][i] = 1
             for j, pix in enumerate(test_letters[i]):
-                emission_prob[ch][i] *= (1 - error_prob) if pix == train_letters[ch][j] else error_prob
+                emm_prob[ch][i] *= (1 - error_prob) if pix == train_letters[ch][j] else error_prob
+                #emm_prob[ch][i] *= 2.0/3 if pix == train_letters[ch][j] else 1.0/3
+    #print(emm_prob)
+    '''for ch in train_letters_ch:
+        print(emm_prob[ch])
+        total = sum(emm_prob[ch])
+        print(total)
+        checktotal = 0
+        for i in range(len(test_letters)):
+            emm_prob[ch][i] = emm_prob[ch][i]/total
+            checktotal += emm_prob[ch][i]
+    print(emm_prob)'''
+
+    for i in range(len(test_letters)):
+        total = 0
+        for ch in train_letters_ch:
+            total += emm_prob[ch][i]
+        for ch in train_letters_ch:
+            emm_prob[ch][i] = emm_prob[ch][i]/total
+    #print(emm_prob)
 
 
 def main():

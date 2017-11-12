@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from naivebayes import NaiveBayes
 from collections import defaultdict
 from itertools import chain
+import sys
 
 ch_width=14
 ch_height=25
@@ -209,16 +210,23 @@ def calculate_emission_prob(train_letters, test_letters, error_prob):
 
 
 def main():
-    train_img_fname = 'courier-train.png'
-    train_txt_fname = 'DemocracyAndEducation.txt'
+    #train_img_fname = 'courier-train.png'
+    #train_txt_fname = 'DemocracyAndEducation.txt'
+
+    if len(sys.argv) < 4:
+        print('Usage: ')
+        print('./ocr.py train-image-file.png train-text.txt test-image-file.png')
+        sys.exit()
+
+    (train_img_fname, train_txt_fname, test_img_fname) = sys.argv[1:4]
 
     train_letters = load_training_letters(train_img_fname)
     for ch in train_letters_ch:
         train_letters[ch] = list(chain.from_iterable(train_letters[ch]))
     calculate_probabilities(train_txt_fname)
 
-    for i in range(20):
-        test_img_fname = 'test-{}-0.png'.format(i)
+    for i in range(1):
+        #test_img_fname = 'test-{}-0.png'.format(i)
         test_letters = load_letters(test_img_fname)
         for i, l in enumerate(test_letters):
             test_letters[i] = list(chain.from_iterable(test_letters[i]))
@@ -226,6 +234,7 @@ def main():
         # Simplified
         simplified_res = simplified_bayes(train_letters, test_letters, prior_prob)
         print('Simple : {}'.format(simplified_res))
+
         calculate_emission_prob(train_letters, test_letters, calculate_error(train_letters, test_letters, simplified_res))
 
         # HMM VE

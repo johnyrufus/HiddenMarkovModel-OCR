@@ -13,6 +13,7 @@
 from collections import Counter
 from enum import Enum
 from math import log
+import numpy as np
 
 class Algo(Enum):
     Simplified = "Simplified"
@@ -42,6 +43,9 @@ class Cell():
 # make sure your code still works with the label.py and pos_scorer.py code
 # that we've supplied.
 #
+
+safeLog = np.vectorize(lambda p: log(p) if p > 0 else -10000.0, otypes=[np.float])
+
 class Solver:
     order = ["adj", "adv", "adp", "conj", "det", "noun", "num", "pron", "prt", \
              "verb", "x", "."]
@@ -49,22 +53,24 @@ class Solver:
     def __init__(self):
         #Class variables for the simplified POS model.
         self.simple_p_of_pos_given_word = {} # key = word, value = list of 12 POS probabilities
-        self.simple_p_of_pos = [0.00] * 12 # list of 12 POS probabilities
+        self.simple_p_of_pos = np.array([0.00] * 12) # list of 12 POS probabilities
 
         #Class variables for the HMM-VE model.
-        self.initial_state_probs = [0.00] * 12
-        self.end_state_probs = [0.00] * 12
+        self.initial_state_probs = np.array([0.00] * 12)
+        self.end_state_probs = np.array([0.00] * 12)
         self.emission_probs = [Counter() for _ in range(12)]
-        self.transition_probs = [[0.00] * 12 for _ in range(12)]
+        self.transition_probs = np.array([[0.00] * 12 for _ in range(12)])
         self.lexicon = Counter()
         
         self.posteriors = {Algo.Simplified: 0.0, Algo.HMM_VE: 0.0, Algo.HMM_MAP: 0.0}
 
         #Class variables for the HMM-Viterbi model.
-        self.initial_state_probs_log = [0.00] * 12
-        self.end_state_probs_log = [0.00] * 12
+        self.simple_p_of_pos_log = None # will be set after training
+        self.simple_p_of_pos_given_word_log = {}
+        self.initial_state_probs_log = None # will be set after training
+        self.end_state_probs_log = None # will be set after training
         self.emission_probs_log = [{} for _ in range(12)]
-        self.transition_probs_log = [[0.00] * 12 for _ in range(12)]
+        self.transition_probs_log = None # will be set after training
             
     # Calculate the log of the posterior probability of a given sentence
     #  with a given part-of-speech labeling
@@ -80,88 +86,68 @@ class Solver:
 
             #Variables for VE algorithm.
             #Count the times a POS starts a sentence.
-            self.initial_state_probs[self.order.index(tags[0])] += 1
-            self.end_state_probs[self.order.index(tags[-1])] += 1
-            
-            self.initial_state_probs_log[self.order.index(tags[0])] += 1
-            self.end_state_probs_log[self.order.index(tags[-1])] += 1            
+            self.initial_state_probs[self.order.index(tags[0])] += 1.
+            self.end_state_probs[self.order.index(tags[-1])] += 1.
             
             last_tag = None
             for word, tag in zip(sentence, tags):
                 index_of_tag = self.order.index(tag)
                 
                 #Variables for simplified algorithm.
-                self.simple_p_of_pos[index_of_tag] += 1
+                self.simple_p_of_pos[index_of_tag] += 1.
                 if word not in self.simple_p_of_pos_given_word:
-                    self.simple_p_of_pos_given_word[word] = [0.00] * 12
-                self.simple_p_of_pos_given_word[word][index_of_tag] += 1
+                    self.simple_p_of_pos_given_word[word] = np.array([0.00] * 12)
+                self.simple_p_of_pos_given_word[word][index_of_tag] += 1.
         
                 # Transition Probabilities
                 if last_tag != None:
                     last_tag_index = self.order.index(last_tag)
                     current_tag_index = self.order.index(tag)
                     
-                    self.transition_probs[last_tag_index][current_tag_index] += 1
+                    self.transition_probs[last_tag_index][current_tag_index] += 1.
 
                 # Emission Probabilities
-                self.emission_probs[index_of_tag][word] += 1
+                self.emission_probs[index_of_tag][word] += 1.
                 
-                if word not in self.emission_probs_log[index_of_tag]:
-                    self.emission_probs_log[index_of_tag][word] = 0
-                self.emission_probs_log[index_of_tag][word] += 1
-
                 # Word probabilities                
-                self.lexicon[word] += 1
+                self.lexicon[word] += 1.
                 
                 last_tag = tag
                 
         #Converting P(pos) to percentages
-        total = sum(self.simple_p_of_pos)
-        for p, pos in enumerate(self.simple_p_of_pos):
-            self.simple_p_of_pos[p] = pos / total
+        total = np.sum(self.simple_p_of_pos)
+        self.simple_p_of_pos /= total
+        self.simple_p_of_pos_log = safeLog(self.simple_p_of_pos)
         
         #Converting P(pos|word) to percentages
         for word in self.simple_p_of_pos_given_word:
-            probs = self.simple_p_of_pos_given_word[word]
-            
+            probs = self.simple_p_of_pos_given_word[word]            
             total = sum(probs)
-            probs = [x / total for x in probs]
-            
-            self.simple_p_of_pos_given_word[word] = probs
+            probs /= total            
+            self.simple_p_of_pos_given_word_log[word] = safeLog(probs)
 
         #Converting initial states to percentages
         total = sum(self.initial_state_probs)
-        self.initial_state_probs = [x / total for x in self.initial_state_probs]
-        
-        total = sum(self.initial_state_probs_log)
-        self.initial_state_probs_log = [log(x / total, 2) for x in self.initial_state_probs_log]
+        self.initial_state_probs /= total
+        self.initial_state_probs_log = safeLog(self.initial_state_probs)
         
         total = sum(self.end_state_probs)
-        self.end_state_probs = [x / total for x in self.end_state_probs]
+        self.end_state_probs /= total
+        self.end_state_probs_log = safeLog(self.end_state_probs)
 
         #Converting transitions over to percentages:
-        for p, pos in enumerate(self.transition_probs):
-            total = sum(pos)
-            probs = [(x+1.00) / (total+12.00) for x in pos]
-            self.transition_probs[p] = probs
+        # Note that Laplace smoothing has been removed
+        self.transition_probs = np.apply_along_axis(
+                lambda row: row/np.sum(row), 1, self.transition_probs)
+        self.transition_probs_log = safeLog(self.transition_probs)
             
-        for p, pos in enumerate(self.transition_probs_log):
-            total = sum(pos)
-            probs = [log((x + 1.00) / (total + 12.00), 2) for x in pos]
-
         #Converting emission probabilities over to percentages:
-        for p, pos in enumerate(self.emission_probs):
-            total = sum(pos.values())
-            
+        for i, pos in enumerate(self.emission_probs):
+            total = sum(pos.values())            
             for word in pos:
-                pos[word] = 1.00 * pos[word] / total
-        
-        for p, pos in enumerate(self.emission_probs_log):
-            total = sum(pos.values())
+                pos[word] /= total
+                self.emission_probs_log[i][word] = log(pos[word])
             
-            for word in pos:
-                pos[word] = log(1.00 * pos[word] / total, 2)
-    
     # Functions for each algorithm.
     #
     def simplified(self, sentence):
@@ -170,15 +156,13 @@ class Solver:
         for word in sentence:
             if word in self.simple_p_of_pos_given_word:
                 probs = self.simple_p_of_pos_given_word[word]
-                maxProb = max(probs)
-                part = probs.index(maxProb)                
             else:
                 #If we've never encountered the word before, pick the most
                 #common part-of-specch.
-                maxProb = max(self.simple_p_of_pos)
-                part = self.simple_p_of_pos.index(maxProb)
+                probs = self.simple_p_of_pos
+            part = np.argmax(probs)               
             guess += [self.order[part]]
-            s_posterior *= maxProb
+            s_posterior *= probs[part]
         self.posteriors[Algo.Simplified] = log(s_posterior)
         return guess
     
@@ -193,7 +177,7 @@ class Solver:
         for w, word in enumerate(sentence):
             current_state = [0.00] * 12
             
-            for c, c_pos in enumerate(current_state):
+            for c in range(len(current_state)):
                 #We're at the start of the sentence, so use initial_states...
                 if w == 0:
                     prob = self.initial_state_probs[c]

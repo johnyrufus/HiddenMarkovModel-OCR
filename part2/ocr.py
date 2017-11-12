@@ -3,7 +3,7 @@
 # ./ocr.py : Perform optical character recognition, usage:
 #     ./ocr.py train-image-file.png train-text.txt test-image-file.png
 #
-# Authors: (insert names here)
+# Authors: Johny Rufus
 # (based on skeleton code by D. Crandall, Oct 2017)
 #
 
@@ -57,12 +57,10 @@ def forward_backward(observations, states):
                 prev_f_sum = start_prob[st]
             else:
                 prev_f_sum = sum(f_prev[k] * trans_prob[k][st] for k in states)
-
             f_curr[st] = emm_prob[st][i] * prev_f_sum
 
         fwd.append(f_curr)
         f_prev = f_curr
-        #print(f_prev)
 
     p_fwd = sum(f_curr[k] * end_prob[k] for k in states)
 
@@ -88,7 +86,6 @@ def forward_backward(observations, states):
         else:
             posterior.append({st: fwd[i][st] * bkw[i][st] / p_fwd for st in states})
 
-    #print(fwd, bkw, posterior)
     return fwd, bkw, posterior
 
 
@@ -97,7 +94,7 @@ def hmm_map(test_letters):
 
 
 def viterbi(states, num_obs):
-    dp = {st: {obs:{} for obs in range(num_obs)} for st in states}
+    dp = {st: {obs: {} for obs in range(num_obs)} for st in states}
 
     for st in states:
         dp[st][0]['value'] = start_prob[st] * emm_prob[st][0]
@@ -125,7 +122,6 @@ def viterbi(states, num_obs):
         st = dp[prev][obs]['prev']
         res = [st] + res
         prev = st
-    #print(dp)
     return res
 
 
@@ -179,16 +175,30 @@ def calculate_error(train_letters, test_letters, naive_prediction):
                 total_valid += (1 if pixel == test_letters[i][j] else 0)
     error_weight = 0.2 # Otherwise the Observation can get completely ignored, if naive bayes prediction is bad
     error_prob = error_weight * total_error / (total_error + total_valid)
-    #print(error_prob)
     return error_prob
 
 
 def calculate_emission_prob(train_letters, test_letters, error_prob):
+    pixel_count = {}
+    for ch in train_letters_ch:
+        total_on = 0
+        for pix in train_letters[ch]:
+            total_on += 1 if pix == '*' else 0
+        pixel_count[ch] = total_on
+    avg_pixel_count = sum(pixel_count.values())/len(train_letters_ch)
     for ch in train_letters_ch:
         emm_prob[ch] = [1.0] * len(test_letters)
         for i in range(len(test_letters)):
+            total_on = 0
+            for pix in test_letters[i]:
+                total_on += 1 if pix == '*' else 0
             for j, pix in enumerate(test_letters[i]):
-                emm_prob[ch][i] *= (1 - error_prob) if pix == train_letters[ch][j] else error_prob
+                if total_on > avg_pixel_count/5:
+                    if pix == '*':
+                        emm_prob[ch][i] *= (1 - error_prob) if pix == train_letters[ch][j] else error_prob
+                else:
+                    if pix == ' ':
+                        emm_prob[ch][i] *= (1 - error_prob) if pix == train_letters[ch][j] else error_prob
 
     for i in range(len(test_letters)):
         total = 0
@@ -196,7 +206,6 @@ def calculate_emission_prob(train_letters, test_letters, error_prob):
             total += emm_prob[ch][i]
         for ch in train_letters_ch:
             emm_prob[ch][i] = emm_prob[ch][i]/total
-    #print(emm_prob)
 
 
 def main():
@@ -213,8 +222,6 @@ def main():
         test_letters = load_letters(test_img_fname)
         for i, l in enumerate(test_letters):
             test_letters[i] = list(chain.from_iterable(test_letters[i]))
-
-        #test_letters = test_letters[0:2]
 
         # Simplified
         simplified_res = simplified_bayes(train_letters, test_letters, prior_prob)

@@ -11,33 +11,8 @@
 ####
 
 from collections import Counter
-from enum import Enum
 from math import log
 import numpy as np
-
-class Algo(Enum):
-    Simplified = "Simplified"
-    HMM_VE = "HMM VE"
-    HMM_MAP = "HMM MAP"
-
-class Cell():
-    '''
-    Represents a cell in a Viterbi matrix. Has two members:
-        * prevPos - the cell in the previous state that is the most likely predecessor of this cell
-        * prob - the joint distribution probability of this cell
-    
-    Cells in the initial state should have a prevPos of None.
-    
-    When the last state has in the Viterbi matrix has been evaluated, the maximum
-    probability POS for that state can be determined. Then you only need to follow
-    the prevPos links until a cell with prevPos == None is reached, and you will
-    have your MAP path.
-    '''
-    
-    def __init__(self, prevPos, prob):
-        self.prevPos = prevPos
-        self.prob = prob
-
 
 # We've set up a suggested code structure, but feel free to change it. Just
 # make sure your code still works with the label.py and pos_scorer.py code
@@ -62,8 +37,6 @@ class Solver:
         self.transition_probs = np.array([[0.00] * 12 for _ in range(12)])
         self.lexicon = Counter()
         
-        self.posteriors = {Algo.Simplified: 0.0, Algo.HMM_VE: 0.0, Algo.HMM_MAP: 0.0}
-
         #Class variables for the HMM-Viterbi model.
         self.initial_state_probs_log = np.array([0.00] * 12) # will be set after training
         self.end_state_probs_log = np.array([0.00] * 12) # will be set after training
@@ -72,8 +45,25 @@ class Solver:
             
     # Calculate the log of the posterior probability of a given sentence
     #  with a given part-of-speech labeling
-    def posterior(self, sentence, algo):
-        return self.posteriors[algo]
+    def posterior(self, sentence, tags):
+        posterior = 0
+        
+        last_tag_index = None
+        for t, tag in enumerate(tags):
+            tag_index = self.order.index(tag)
+            if t == 0: posterior += self.initial_state_probs_log[tag_index]
+            else: posterior += self.transition_probs_log[last_tag_index][tag_index]            
+            last_tag_index = tag_index
+
+        for word, tag in zip(sentence, tags):
+            tag_index = self.order.index(tag)
+            if word in self.emission_probs_log[tag_index]:
+                posterior += self.emission_probs_log[tag_index][word]
+            else:
+                posterior += log(1.00 / (len(self.lexicon)*10000), 2)
+        
+        #P(W1 | S1) ... P(Wn | Sn) P(S1) P(S2|S1) ... P(Sn | Sn-1)/ P(W1...Wn)
+        return posterior
 
     # Do the training!
     #
@@ -153,7 +143,6 @@ class Solver:
     #
     def simplified(self, sentence):
         guess = []
-        s_posterior = 1.0        
         for word in sentence:
             if word in self.simple_p_of_pos_given_word:
                 probs = self.simple_p_of_pos_given_word[word]
@@ -163,8 +152,6 @@ class Solver:
                 probs = self.simple_p_of_pos
             part = np.argmax(probs)               
             guess += [self.order[part]]
-            s_posterior *= probs[part]
-        self.posteriors[Algo.Simplified] = log((1.00 / 11.00)**len(sentence), 2)
         return guess
     
     #Shell of the code: https://en.wikipedia.org/wiki/Forward%E2%80%93backward_algorithm
@@ -173,7 +160,6 @@ class Solver:
         guess = []
         #Calculate foward pass...
         forward = []
-        ve_posterior = 1.0
         prev_state = [0.00] * 12
         for w, word in enumerate(sentence):
             current_state = [0.00] * 12
@@ -216,19 +202,11 @@ class Solver:
             backward.insert(0, current_state)
             prev_state = current_state
         
-        last_pos_index = 0
         for w in range(len(sentence)):
             probs = [forward[w][pos] * backward[w][pos] / forward_prob for pos in range(12)]
-            maxProb = max(probs)
-
-            pos_index = probs.index(maxProb)
-            if w == 0: ve_posterior *= self.initial_state_probs[pos_index]
-            else: ve_posterior *= self.transition_probs[last_pos_index][pos_index]
-            last_pos_index = pos_index
-            
+            pos_index = probs.index(max(probs))    
             guess += [self.order[pos_index]]
 
-        self.posteriors[Algo.HMM_VE] = log(ve_posterior, 2)
         return guess
 
     def hmm_viterbi(self, sentence):
@@ -238,8 +216,6 @@ class Solver:
         
         state = [[0.00] * 12 for x in range(len(sentence))]
         backtrack = []
-
-        vit_posterior = 1.0
         
         for w, word in enumerate(sentence):
             if w == 0:
@@ -286,8 +262,6 @@ class Solver:
         last_index = last.index(max(last))
         tagging = [last_index]
 
-        vit_posterior = max(last)
-
         for trans in reversed(backtrack):
             high_prob = -float('inf')
             index = -1
@@ -302,7 +276,6 @@ class Solver:
         for tag in tagging:
             guess += [self.order[tag]]
 
-        self.posteriors[Algo.HMM_MAP] = vit_posterior
         return guess
 
     # This solve() method is called by label.py, so you should keep the interface the
@@ -311,11 +284,11 @@ class Solver:
     #  part of speech per word.
     #
     def solve(self, algo, sentence):
-        if algo == Algo.Simplified:
+        if algo == "Simplified":
             return self.simplified(sentence)
-        elif algo == Algo.HMM_VE:
+        elif algo == "HMM VE":
             return self.hmm_ve(sentence)
-        elif algo == Algo.HMM_MAP:
+        elif algo == "HMM MAP":
             return self.hmm_viterbi(sentence)
         else:
             raise ValueError("Unknown algo")

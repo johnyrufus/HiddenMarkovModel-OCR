@@ -44,6 +44,9 @@ class Score:
     @staticmethod
     def print_results(sentence, outputs, posteriors):
         Score.print_helper("", sentence, sentence)
-        for algo in sorted(outputs.keys()):
+        keys = sorted(outputs.keys())
+        for algo in keys:
             Score.print_helper(algo + " (%7.2f)" % posteriors[algo], outputs[algo], sentence)
+        if posteriors[keys[3]] < max(posteriors.values()):
+            print ("PROBLEM! Viterbi did not find the max likelihood sequence!")
 

@@ -6,88 +6,13 @@
 # (Based on skeleton code by D. Crandall)
 #
 #
-####
-# The program below implements three versions of the Hidden Markov Model 
-# given to us a part of Assignment 3, Part 1. In total, we implmeneted four
-# features that fully develop the model and then implement inference on it.
-# 
-# The first section we tackled was to implemnet the training method. It is
-# responsible for calculating the various pieces of the puzzle that we need
-# in order to implement all three algorithms:
-# 
-# Simplified - requires P(Part-of-Speech | Word) and is implemented as d
-# dictionary of words with each word pointing to a list with 12 components. 
-# Those components then contain the probability of a part-of-speech based off
-# of the training data. We also implemented a raw P(Part-of-Speech) for words
-# we have never seen before. This simply returns the most common part-of-specch
-# (noun) that we did not see while training.
-# 
-# Hidden Markov Model - Variable Elimination (VE): this model requires initial
-# state probabilities, end state probabilities, emission probabilities, and 
-# transition probabilities. The initial and end state probabilities are both
-# calculated the same - any time a part-of-speech is at the front or end of a
-# sentence, then the count for that part-of-speech is incremented by 1. 
-# Likewise, for each word encountered, we add it to a dictionary of words for
-# each part-of-speech and to our lexicon (if it doesn't already exist). We then
-# increment the count by one. Finally, for all words beyond the first, we 
-# record the last and current part-of-speech tag and then increment by one. 
-# Once training is completed, each variable is normalized to 1.
-# 
-# Viterbi Decoding: This algorithm requires the same as HMM-VE but, instead of
-# decimal probabilities, each value is expressed in terms of log base 2 to
-# avoid underflow issues.
-# 
-# During the development of this section, we did not encounter any significant
-# difficulties other than simple programming errors (forgetting to normalize
-# or convert to log base 2). There were some changes made to what structures
-# were used to store the data but those were quickly settled upon after a few
-# trials.
-# 
-# The second function we implemented was the Simplified method. This algorithm
-# was fairly easy to implement - for every word, we simply picked the most 
-# common part-of-speech. If we had never encountered the word before, we 
-# guess by selecting the most common part-of-speech from our training dataset,
-# which was noun. We found the power of even this rudimentary system to be 
-# pretty good - around 94% on words and 47% on sentences. We did not have to
-# do much tweaking to the algorithm once it was properly implemented.
-#
-# The third function implemented was the Variable Elimination Hidden Markov
-# Model. This one took some amount of time to get right as we initially 
-# implemented only a forward pass on the data which did not perform as well as 
-# the simple method. However, postings on the Piazza board with Professor 
-# Crandall pointed us in the right direction: to use the forward/backward 
-# algorithm. Once implemented, we saw a significant boost to performance: 95%
-# on words and 54.3% on sentences. We opted to not implement Laplace smoothing
-# at this point as initial tests showed it to cause a slgiht regression in 
-# performance.
-# 
-# The four fucntion implemented was the Viterbi algorithm. This one, in its
-# base form, came together fairly quickly as we had a very simple model working
-# in Excel that was developed during the Viterbi module. We were able to use 
-# that as a reference point to quickly implement and tune our part-of-speech
-# tagging version. We were required to implement Laplace smoothing as log(0, 2)
-# is undefined. After a bit of bug hunting and refinements, we were happy with
-# our implemtntation which showed a marginal regression in word perfromance
-# when compared to HMM-VE but that was more than offset by the improvement on
-# overall sentences (0.03% drop on words, 0.15% improvement on sentences). This
-# leads to speculation that when it gets things wrong, it tends to produce 
-# incorrect sequences (multiple words wrong per sentence rather than just one 
-# word) but we did not investigate the issue further.
-#
-# The final function implemented was the posterior distribution. We did not 
-# have a good intuition about it to begin with as it wasn't heavily covered
-# in the lectures. Our initial guess was to implement it differently for each
-# algorithm based off of how they model the world. For example, we assumed that
-# the simplified method's posterior was simply the probability of generating
-# that sequence at random (randomly pick one of 12 part-of-speech tags N times
-# over where N is the length of the sentence) which became (1/12)^N. Likewise,
-# the HMM-VE version used P(S)P(S2|S)P(S3|S2)...P(Sn|Sn-1). This was close to
-# the correct method, which we have implemented below, that was discussed on
-# Piazza by Professor Crandall after we asked a question about it.
-#
-#References:
-#HMM-VE shell code was adapted from the Wikipedia article on the algorithm:
-#https://en.wikipedia.org/wiki/Forward%E2%80%93backward_algorithm
+'''
+While there are plenty of source code comments, our primary documentation is in
+the README.md
+
+PLEASE GO TO THE README.MD for our analysis of Part 1! Thanks!
+
+'''
 
 ####
 
@@ -137,8 +62,10 @@ class Solver:
         #P(S)P(S2 | S)P(S3 | S2)...
         for t, tag in enumerate(tags):
             tag_index = self.order.index(tag)
-            if t == 0: posterior += self.initial_state_probs_log[tag_index]
-            else: posterior += self.transition_probs_log[last_tag_index][tag_index]            
+            if t == 0: 
+                posterior += self.initial_state_probs_log[tag_index]
+            else: 
+                posterior += self.transition_probs_log[last_tag_index][tag_index]            
             last_tag_index = tag_index
             
         #This is where we calculate the probability of the emissions given the 
@@ -296,8 +223,6 @@ class Solver:
         return guess
 
     def hmm_viterbi(self, sentence):
-        guess = []
-        
         guess = []
         
         state = [[0.00] * 12 for x in range(len(sentence))]

@@ -7,6 +7,36 @@
 # (based on skeleton code by D. Crandall, Oct 2017)
 #
 
+'''
+Some of the design choices made:
+
+1. Comparing two images by comparing the pixels proved to be a pretty tricky issue,
+as comparing the pixels by just taking into account the matching pixels(using both
+black and white) would lead a lot of characters to be predicted as ' '(Space).
+Just taking into account the pixels that are ON (black), solved the above problem,
+but this will end up in not predicting a ' '  correctly, even under slight noise.
+So the final idea that worked was, using a combination of both strategies based on
+average pixel count and the current Observation's pixel count and employing different
+strategies for observations that had very low black pixels VS observations that have
+a substantial amount of black pixels.
+
+2. Ended up calculating and using the error/noise level based on the naive bayes
+prediction, but this does not seem to have much of an effect, in fact going by a
+constant Probability of .99 and .01 seems to perform well in general as well.
+
+3. Emission probabilities are normalized on the pixel counts, for HMM-VE every column
+is scaled to prevent underflow and for Viterbi, log scaling is used to prevent underflow
+
+Interesting Observations based on test images provided:
+
+HMM-VE and HMM-MAP outperform Simple in almost every single test image provided.
+When looking at HMM-VE vs HMM-MAP, the output is almost the same in terms of the prediction.
+In fact HMM-VE has a better prediction of the last character, which I believe is due to the
+Forward-Backward algorithm taking into consideration the end probabilities, which HMM-MAP
+does not consider.
+
+'''
+
 from PIL import Image, ImageDraw, ImageFont
 from naivebayes import NaiveBayes
 from collections import defaultdict
@@ -40,15 +70,28 @@ def load_training_letters(fname):
     return { train_letters_ch[i]: letter_images[i] for i in range(0, len(train_letters_ch) ) }
 
 
+'''
+Calls the NaiveBayes class 
+provided in a separate file naivebayes.py
+'''
 def simplified_bayes(train_letters, test_letters, prior):
     nb = NaiveBayes(train_letters, prior)
     return ''.join([nb.predict(letter) for letter in test_letters])
 
 
+'''
+VE implementation using forward backward algorithm.
+'''
 def hmm_ve(test_letters):
     return forward_backward(test_letters, train_letters_ch)
 
 
+'''
+The forward backward algorithm to implement Variable Elimination,
+the outer stub is taken from wikipedia - 
+https://en.wikipedia.org/wiki/Forward%E2%80%93backward_algorithm
+and modified to fit the current problem.
+'''
 def forward_backward(observations, states):
     # Calculate the forward probabilities of being in a state Qn given all the
     # observations till On.
@@ -104,10 +147,17 @@ def forward_backward(observations, states):
     return fwd, bkw, posterior
 
 
+'''
+HMM-MAP using the Viterbi implementation
+'''
 def hmm_map(test_letters):
     return viterbi(train_letters_ch, len(test_letters))
 
 
+'''
+The Viterbi implementation, 
+builds a dp table with states as rows and observations as columns.
+'''
 def viterbi(states, num_obs):
     dp = {st: {obs: {} for obs in range(num_obs)} for st in states}
     start_prob_log = {st: log(start_prob[st]) if start_prob[st] > 0 else -100000 for st in states}
@@ -143,6 +193,10 @@ def viterbi(states, num_obs):
     return res
 
 
+'''
+Calculates the starting probabilities, 
+end probabilities, transition probabilities
+'''
 def calculate_probabilities(fname):
     train_set = set(train_letters_ch)
     for ch1 in train_letters_ch:
@@ -183,6 +237,10 @@ def calculate_probabilities(fname):
     end_prob['.'] = 0.1
 
 
+'''
+Calculates an approximate error/noise level, 
+based on the prediction from Naive Bayes.
+'''
 def calculate_error(train_letters, test_letters, naive_prediction):
     total_error = 1
     total_valid = 1
@@ -197,6 +255,10 @@ def calculate_error(train_letters, test_letters, naive_prediction):
     return error_prob
 
 
+'''
+Calculates the emission probabilities 
+based on pixels and normalize them.
+'''
 def calculate_emission_prob(train_letters, test_letters, error_prob):
     pixel_count = {}
     for ch in train_letters_ch:

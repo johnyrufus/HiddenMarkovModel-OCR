@@ -65,7 +65,14 @@ Our implementation adds log probabilities in lieu of multiplying decimal probabi
 
 ### Results
 
-Since Viterbi decoding can be mathematically shown to find the most likely POS sequence in the Hidden Markov Model, it is not surprising that the Viterbi posterior was the highest for all 2000 sentences. VE's posterior frequently tied Viterbi's, but was occasionally lower. Curiously, the ground truth posterior was never higher than the Viterbi posterior, and frequently lower by a very substantial amount. For Hidden Markov Models, ground truth is often stranger than fiction.
+Since Viterbi decoding can be mathematically shown to find the most likely POS sequence in the Hidden Markov Model, it is not surprising that the Viterbi posterior was the highest for all 2000 sentences. We verified this outcome by adding the following code to `pos_scorer.print_results()`:
+
+```python
+if posteriors[keys[3]] < max(posteriors.values()):
+    print ("PROBLEM! Viterbi did not find the max likelihood sequence!")
+```
+
+Since the "PROBLEM" message was never printed to console, we were able to conclude that the Viterbi posterior was always greater than or equal to all other posteriors. VE's posterior frequently tied Viterbi's, but was occasionally lower. Curiously, the ground truth posterior was never higher than the Viterbi posterior, and frequently lower by a very substantial amount. For Hidden Markov Models, ground truth is often stranger than fiction.
 
 Given that it predicts the greatest posterior probability, it is not surprising that the Viterbi decoder is the most accurate predictor of POS sequences. It is followed closely by the VE algorithm, as seen below: 
 

@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from naivebayes import NaiveBayes
 from collections import defaultdict
 from itertools import chain
+from math import log
 import sys
 
 ch_width=14
@@ -49,6 +50,8 @@ def hmm_ve(test_letters):
 
 
 def forward_backward(observations, states):
+    # Calculate the forward probabilities of being in a state Qn given all the
+    # observations till On.
     fwd = []
     f_prev = {}
     for i, observation_i in enumerate(observations):
@@ -60,11 +63,17 @@ def forward_backward(observations, states):
                 prev_f_sum = sum(f_prev[k] * trans_prob[k][st] for k in states)
             f_curr[st] = emm_prob[st][i] * prev_f_sum
 
+        # Scale the column to sum to 1
+        column_sum = sum(f_curr[st] for st in states)
+        for st in states:
+            f_curr[st] = f_curr[st]/column_sum
+
         fwd.append(f_curr)
         f_prev = f_curr
 
     p_fwd = sum(f_curr[k] * end_prob[k] for k in states)
 
+    # Calculate the backward probabilities of the observations On-1...Ok, given the state Qn
     bkw = []
     b_prev = {}
     
@@ -76,12 +85,17 @@ def forward_backward(observations, states):
             else:
                 b_curr[st] = sum(trans_prob[st][l] * emm_prob[l][i] * b_prev[l] for l in states)
 
+        # Scale the column to sum to 1
+        column_sum = sum(b_curr[st] for st in states)
+        for st in states:
+            b_curr[st] = b_curr[st]/column_sum
+
         bkw.insert(0, b_curr)
         b_prev = b_curr
 
-    p_bkw = sum(start_prob[l] * emm_prob[l][0] * b_curr[l] for l in states)
     posterior = []
     for i in range(len(observations)):
+        # Prevent underflow, This should not happen, as we have scaled the values, just in case.
         if p_fwd == 0:
             return fwd, bkw, fwd
         else:
@@ -96,17 +110,20 @@ def hmm_map(test_letters):
 
 def viterbi(states, num_obs):
     dp = {st: {obs: {} for obs in range(num_obs)} for st in states}
+    start_prob_log = {st: log(start_prob[st]) if start_prob[st] > 0 else -100000 for st in states}
+    trans_prob_log = {st: {q: log(trans_prob[st][q]) if trans_prob[st][q] > 0 else -100000 for q in states} for st in states}
+    emm_prob_log = {st: {obs: log(emm_prob[st][obs]) if emm_prob[st][obs] > 0 else -100000 for obs in range(num_obs)} for st in states}
 
     for st in states:
-        dp[st][0]['value'] = start_prob[st] * emm_prob[st][0]
+        dp[st][0]['value'] = start_prob_log[st] + emm_prob_log[st][0]
         dp[st][0]['prev'] = None
 
     for obs in range(1, num_obs):
         for st in states:
-            max_prev = max(dp[prev][obs-1]['value'] * trans_prob[prev][st] for prev in states)
+            max_prev = max(dp[prev][obs-1]['value'] + trans_prob_log[prev][st] for prev in states)
             for prev in states:
-                if dp[prev][obs-1]['value'] * trans_prob[prev][st] == max_prev:
-                    dp[st][obs]['value'] = max_prev * emm_prob[st][obs]
+                if dp[prev][obs-1]['value'] + trans_prob_log[prev][st] == max_prev:
+                    dp[st][obs]['value'] = max_prev + emm_prob_log[st][obs]
                     dp[st][obs]['prev'] = prev
                     break
 
@@ -174,6 +191,7 @@ def calculate_error(train_letters, test_letters, naive_prediction):
             if test_letters[i][j] == '*':
                 total_error += (1 if pixel != test_letters[i][j] else 0)
                 total_valid += (1 if pixel == test_letters[i][j] else 0)
+
     error_weight = 0.2 # Otherwise the Observation can get completely ignored, if naive bayes prediction is bad
     error_prob = error_weight * total_error / (total_error + total_valid)
     return error_prob
@@ -233,13 +251,13 @@ def main():
 
         # Simplified
         simplified_res = simplified_bayes(train_letters, test_letters, prior_prob)
-        print('Simple : {}'.format(simplified_res))
+        print(' Simple: {}'.format(simplified_res))
 
         calculate_emission_prob(train_letters, test_letters, calculate_error(train_letters, test_letters, simplified_res))
 
         # HMM VE
         fwd, bkw, posterior = hmm_ve(test_letters)
-        print('HMM VE : {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in posterior])))
+        print(' HMM VE: {}'.format(''.join([max(test_prob, key=test_prob.get) for test_prob in posterior])))
 
         # HMM MAP
         print('HMM MAP: {}'.format(''.join(hmm_map(test_letters))))
